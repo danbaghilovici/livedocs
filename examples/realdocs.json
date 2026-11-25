@@ -1,0 +1,8 @@
+{
+  "sections": {
+    "fulfillment": {
+      "title": "Fulfillment example",
+      "config": "fulfillment/realdocs.json"
+    }
+  }
+}

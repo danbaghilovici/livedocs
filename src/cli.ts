@@ -220,10 +220,11 @@ async function main(): Promise<void> {
     const { title, pages, sections } = site;
     code.navigation = { title, pages, sections };
   }
-  const configs = impact || release ? compilations.flatMap(({ project, program }) => {
+  const compilerConfigs = impact || release ? compilations.flatMap(({ project, program }) => {
     const compilerConfig = program.getCompilerOptions().configFile as ts.TsConfigSourceFile | undefined;
     return [...(project.config ? [project.config] : []), ...(compilerConfig?.extendedSourceFiles ?? [])];
   }) : [];
+  const configs = [...(site?.configPaths ?? []), ...compilerConfigs];
   if (impact && changes) {
     const documentation = prepareDocumentation(code, project, options);
     impact.reportImpact(changes, documentation, project, projects.flatMap(project => project.entries), configs, options.extension, values.json ?? false);
@@ -235,7 +236,7 @@ async function main(): Promise<void> {
     const sources = compilations.flatMap(({ program }) => program.getSourceFiles()
       .filter(file => !program.isSourceFileDefaultLibrary(file) && !program.isSourceFileFromExternalLibrary(file))
       .map(file => file.fileName));
-    const inputs = [...sources, ...configs, ...project.pages, ...(site ? [configPath] : [])];
+    const inputs = [...sources, ...configs, ...project.pages];
     options.releaseManifest = (documentation, files) => releases.releaseManifest(release, documentation, options.extension, inputs, files);
   }
   if (!document(code, project, options, started)) process.exitCode = 1;

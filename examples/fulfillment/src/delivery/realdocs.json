@@ -1,0 +1,8 @@
+{
+  "sections": {
+    "delivery": {
+      "title": "Delivery",
+      "entries": ["destination.ts", "dispatch.ts"]
+    }
+  }
+}

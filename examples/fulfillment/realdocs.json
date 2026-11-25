@@ -1,0 +1,42 @@
+{
+  "pages": ["README.md", "docs/architecture.md", "docs/quickstart.md"],
+  "sections": {
+    "api": {
+      "title": "Fulfillment API",
+      "project": "tsconfig.json",
+      "entries": [
+        "src/index.ts",
+        "src/contracts.ts",
+        "src/fulfillment.ts",
+        "src/inventory.ts",
+        "src/shipping.js",
+        "src/legacy.cjs"
+      ]
+    },
+    "catalog": {
+      "title": "Catalog",
+      "config": "src/catalog/realdocs.json"
+    },
+    "delivery": {
+      "title": "Delivery",
+      "config": "src/delivery/realdocs.json"
+    },
+    "integrations": {
+      "title": "Integrations",
+      "config": "src/integrations/realdocs.json"
+    },
+    "operations": {
+      "title": "Warehouse operations",
+      "config": "src/operations/realdocs.json"
+    },
+    "guides": {
+      "title": "Checkout and operations guides",
+      "pages": [
+        "docs/delivery.md",
+        "docs/warehouse.md",
+        "docs/integrations.md",
+        "docs/decisions/reservation-lifecycle.md"
+      ]
+    }
+  }
+}

@@ -5,6 +5,7 @@ import type { Diagnostic, SourceLocation } from './model.js';
 
 export interface Project {
   directory: string;
+  compilerDirectory?: string;
   entries: string[];
   pages: string[];
   config?: string;
