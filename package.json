@@ -1,22 +1,31 @@
 {
-  "name": "livedocs",
+  "name": "realdocs",
   "version": "0.1.0",
-  "private": true,
   "description": "Generate a Markdown or HTML wiki from source code and its documentation comments.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/danbaghilovici/livedocs.git"
+  },
   "type": "module",
   "bin": {
-    "livedocs": "dist/cli.js"
+    "realdocs": "dist/cli.js"
   },
   "files": [
-    "dist",
+    "dist/*.js",
     "assets/file-map.css",
-    "assets/file-map.js"
+    "assets/file-map.js",
+    "assets/icon.svg"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=22"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build",
     "test": "npm run build && node --test"
   },
   "dependencies": {
@@ -28,6 +37,5 @@
   },
   "devDependencies": {
     "@types/node": "22.20.5"
-  },
-  "license": "MIT"
+  }
 }

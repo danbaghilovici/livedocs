@@ -1,41 +1,39 @@
 <img src="assets/icon.svg" width="64" height="64" alt="">
 
-# livedocs
+# RealDocs
 
-Livedocs generates linked Markdown or HTML documentation from JavaScript and TypeScript entry points. Exports and signatures come from the TypeScript compiler. Descriptions, examples, and deprecation notes come from the JSDoc already in the source.
+RealDocs generates linked Markdown or HTML documentation from JavaScript and TypeScript entry points. Exports and signatures come from the TypeScript compiler. Descriptions, examples, and deprecation notes come from the JSDoc already in the source.
 
 ## Quick start
 
-Use Node.js 22 or later. From this checkout, install and build the CLI.
+Use Node.js 22 or later. Install RealDocs in the project you want to document.
 
 ```sh
-npm ci
-npm run build
+npm install --save-dev realdocs
+npx realdocs build --entry src/index.ts --timings
 ```
 
-To use the `livedocs` command directly, run `npm link` from this checkout after building. npm adds the command to the active Node.js installation.
-
-Run the CLI from the project you want to document, using the path to your Livedocs checkout.
+For a one-off run, use the same command with an explicit package version.
 
 ```sh
-node /path/to/livedocs/dist/cli.js build --entry src/index.ts --timings
+npx realdocs@0.1.0 build --entry src/index.ts
 ```
 
 Open `dist/livedocs/index.md` in a Markdown viewer. Each entry point gets a page with its top-level exports, including re-exports. Links between documented exports resolve against the generated pages.
 
 Add a leading JSDoc comment such as `/** @livedocs:file Handles shipment pricing and transit estimates. */` to place an overview under the generated page title.
 
-The [fulfillment example](examples/fulfillment/README.md) includes a mixed JS/TS checkout workflow, linked guides, and edits to try in watch mode.
+The [fulfillment example](https://github.com/danbaghilovici/livedocs/tree/main/examples/fulfillment) includes a mixed JS/TS checkout workflow, linked guides, and edits to try in watch mode.
 
 ## Standalone Markdown pages
 
 Repeat `--page` to include Markdown files on the wiki home. Use `--page` on its own for a wiki made entirely from Markdown.
 
 ```sh
-node /path/to/livedocs/dist/cli.js build --entry src/index.ts --page README.md --page docs/architecture.md
+npx realdocs build --entry src/index.ts --page README.md --page docs/architecture.md
 ```
 
-In a selected Markdown page or a source file's `@livedocs:file` overview, write links relative to that source file. Livedocs updates links to selected pages, headings, and exports for the output format. From `docs/architecture.md`, `[Prepare a shipment](../src/index.ts#prepareShipment)` links to the `prepareShipment` export on the generated API page. Heading fragments use lowercase slugs such as `#failure-and-retry`.
+In a selected Markdown page or a source file's `@livedocs:file` overview, write links relative to that source file. RealDocs updates links to selected pages, headings, and exports for the output format. From `docs/architecture.md`, `[Prepare a shipment](../src/index.ts#prepareShipment)` links to the `prepareShipment` export on the generated API page. Heading fragments use lowercase slugs such as `#failure-and-retry`.
 
 `check --strict` reports links to Markdown or JS/TS files missing from the input list and fragments with no matching heading or export. `watch` follows the Markdown files supplied with `--page`.
 
@@ -65,14 +63,14 @@ flowchart LR
 ```
 ````
 
-Livedocs resolves the label from the current export name and puts the documentation link below the diagram. Keep the ID when moving or renaming the export. To generate a graph from repeatable `@livedocs:docUses` declarations, put `{{ diagram.dependencies('fulfillment.prepare') }}` in its own paragraph. `check` reports duplicate IDs, unknown dependency targets, and invalid diagram references.
+RealDocs resolves the label from the current export name and puts the documentation link below the diagram. Keep the ID when moving or renaming the export. To generate a graph from repeatable `@livedocs:docUses` declarations, put `{{ diagram.dependencies('fulfillment.prepare') }}` in its own paragraph. `check` reports duplicate IDs, unknown dependency targets, and invalid diagram references.
 
 ## HTML output
 
 Pass `--format html` to `build` or `watch` to generate linked HTML pages. Open `index.html` in a browser. Pages with Mermaid diagrams use a local renderer packaged in the output directory.
 
 ```sh
-node /path/to/livedocs/dist/cli.js build --entry src/index.ts --format html --out dist/livedocs-html
+npx realdocs build --entry src/index.ts --format html --out dist/livedocs-html
 ```
 
 Use separate output directories to keep both formats. The default format is Markdown.
@@ -97,10 +95,12 @@ npm --prefix examples/fulfillment run docs -- build --format html --out dist/wik
 | `check` | Report source errors, stale JSDoc `@param` names, and unresolved `{@link}` references. |
 | `watch` | Build once, then regenerate on saved changes using TypeScript's incremental compiler. |
 
-Repeat `--entry` for each public entry point. Paths on the command line are relative to the working directory. Livedocs reads `tsconfig.json` or `jsconfig.json` from that directory when present. Use `--project` to select a config in another directory. Entry files must be inside the selected config's directory. The compiler starts with those entries and configured declaration files, then follows imports.
+Repeat `--entry` for each public entry point. Paths on the command line are relative to the working directory. RealDocs reads `tsconfig.json` or `jsconfig.json` from that directory when present. Use `--project` to select a config in another directory. Entry files must be inside the selected config's directory. The compiler starts with those entries and configured declaration files, then follows imports.
 
 `check` validates syntax, static module references, and JSDoc for documented exports. Use your project's TypeScript checker for full type checking. If the selected config file is deleted while watching, restart `watch` after restoring it.
 
-Use `--out` to choose a dedicated output directory. Livedocs checks output ownership before replacing generated pages and retains the last successful wiki when a source error prevents a build. Use `--strict` to fail on documentation warnings, or `--timings` to report build phase timings.
+Use `--out` to choose a dedicated output directory. RealDocs checks output ownership before replacing generated pages and retains the last successful wiki when a source error prevents a build. Use `--strict` to fail on documentation warnings, or `--timings` to report build phase timings.
 
-Run `npm test` to compile the CLI and exercise it against temporary JS/TS projects.
+## Development
+
+From a source checkout, run `npm ci` and `npm test` to compile the CLI and exercise it against temporary JS/TS projects. Run `npm link` after building to try the local checkout as the `realdocs` command.

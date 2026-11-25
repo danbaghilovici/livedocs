@@ -12,7 +12,7 @@ import { writeWiki } from './output.js';
 import { createProgram, projectFromArguments, watchProject, type Project } from './project.js';
 import { extractDocumentation } from './typescript.js';
 
-const help = `Usage: livedocs <build|check|watch> [--entry <file>] [--page <file>] [options]
+const help = `Usage: realdocs <build|check|watch> [--entry <file>] [--page <file>] [options]
 
   build             Generate the documentation wiki.
   check             Validate source, JSDoc references, and wiki links.
@@ -100,7 +100,7 @@ async function main(): Promise<void> {
   }
   const [command] = positionals;
   if (positionals.length !== 1 || !['build', 'check', 'watch'].includes(command) || (!values.entry?.length && !values.page?.length)) {
-    throw new Error('Pass build, check, or watch and at least one --entry or --page file. Run livedocs --help for usage.');
+    throw new Error('Pass build, check, or watch and at least one --entry or --page file. Run realdocs --help for usage.');
   }
   const format = values.format ?? 'markdown';
   if (format !== 'markdown' && format !== 'html') throw new Error(`Unknown output format ${format}. Use markdown or html.`);
