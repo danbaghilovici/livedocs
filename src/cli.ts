@@ -17,8 +17,10 @@ const defaultOutput = 'dist/realdocs';
 
 const help = `Usage: realdocs <build|check|diff|watch> [--entry <file>] [--page <file>] [options]
        realdocs init [--print]
+       realdocs install-skill [--skills-dir <dir>] [--instructions-file <file>]
 
   init              Discover source entries and guides and write realdocs.json.
+  install-skill     Install the bundled RealDocs skills for project agents.
   build             Generate the documentation wiki.
   check             Validate source, JSDoc references, and wiki links.
   diff              Report documentation affected by changes since a Git revision.
@@ -27,6 +29,8 @@ const help = `Usage: realdocs <build|check|diff|watch> [--entry <file>] [--page 
   --entry <file>    JS/TS entry point. Repeat for more than one.
   --page <file>     Standalone Markdown page. Repeat for more than one.
   --print           Show the detected config without writing it (init only).
+  --skills-dir <dir>  Agent skills directory. Defaults to .agents/skills (install-skill only).
+  --instructions-file <file>  Add the documentation maintenance rule to this file (install-skill only).
   --base <ref>       Git commit, tag, or branch to compare against (required by diff).
   --json            Emit a JSON impact report (diff only).
   --version <name>  Build an immutable wiki pinned to the checked-out commit (build only).
@@ -106,6 +110,8 @@ async function main(): Promise<void> {
       entry: { type: 'string', multiple: true },
       page: { type: 'string', multiple: true },
       print: { type: 'boolean' },
+      'skills-dir': { type: 'string' },
+      'instructions-file': { type: 'string' },
       base: { type: 'string' },
       json: { type: 'boolean' },
       version: { type: 'string' },
@@ -123,10 +129,23 @@ async function main(): Promise<void> {
     return;
   }
   const [command] = positionals;
-  if (positionals.length !== 1 || !['init', 'build', 'check', 'diff', 'watch'].includes(command)) {
-    throw new Error('Pass init, build, check, diff, or watch. Run realdocs --help for usage.');
+  if (positionals.length !== 1 || !['init', 'install-skill', 'build', 'check', 'diff', 'watch'].includes(command)) {
+    throw new Error('Pass init, install-skill, build, check, diff, or watch. Run realdocs --help for usage.');
   }
   const cwd = process.cwd();
+  if (command === 'install-skill') {
+    const skillsDir = values['skills-dir'] ?? '.agents/skills';
+    const instructionsFile = values['instructions-file'];
+    if (!skillsDir.trim() || instructionsFile?.trim() === '' ||
+        Object.keys(values).some(option => option !== 'skills-dir' && option !== 'instructions-file')) {
+      throw new Error('Use realdocs install-skill [--skills-dir <dir>] [--instructions-file <file>].');
+    }
+    const { installSkills } = await import('./skills.js');
+    installSkills(resolve(cwd, skillsDir), instructionsFile && resolve(cwd, instructionsFile));
+    return;
+  }
+  if (values['skills-dir'] !== undefined) throw new Error('--skills-dir is only supported by realdocs install-skill.');
+  if (values['instructions-file'] !== undefined) throw new Error('--instructions-file is only supported by realdocs install-skill.');
   if (command === 'init') {
     if (Object.keys(values).some(option => option !== 'print')) throw new Error('Use realdocs init [--print].');
     const { initialize } = await import('./discovery.js');
