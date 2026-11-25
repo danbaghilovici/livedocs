@@ -1,6 +1,6 @@
 {
   "name": "realdocs",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Generate a Markdown or HTML wiki from source code and its documentation comments.",
   "license": "MIT",
   "repository": {
