@@ -1,6 +1,6 @@
-<!-- @livedocs:tag architecture -->
-<!-- @livedocs:tag inventory -->
-<!-- @livedocs:zone Decisions -->
+<!-- @realdocs:tag architecture -->
+<!-- @realdocs:tag inventory -->
+<!-- @realdocs:zone Decisions -->
 
 # Reservation lifecycle decision
 

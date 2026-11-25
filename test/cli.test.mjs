@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 const cli = fileURLToPath(new URL('../dist/cli.js', import.meta.url));
 
 function fixture(t, files) {
-  const cwd = mkdtempSync(join(tmpdir(), 'livedocs-test-'));
+  const cwd = mkdtempSync(join(tmpdir(), 'realdocs-test-'));
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
   const write = (file, contents) => {
     mkdirSync(dirname(join(cwd, file)), { recursive: true });
@@ -60,11 +60,11 @@ export function label(value: string | number) { return String(value); }
 `,
   });
 
-  project.run('build', '--entry', 'src/index.ts', '--entry', 'src/counts.js', '--out', 'wiki');
+  project.run('build', '--entry', 'src/index.ts', '--entry', 'src/counts.js');
 
-  const home = project.read('wiki/index.md');
+  const home = project.read('dist/realdocs/index.md');
   assert.match(home, /\]\(modules\/src\/index\.ts\.md\)/);
-  const page = project.read('wiki/modules/src/index.ts.md');
+  const page = project.read('dist/realdocs/modules/src/index.ts.md');
   assert.match(page, /export function parse\(text: string\): number/);
   assert.match(page, /\[the default count\]\(counts\.js\.md#symbol-fallback\)/);
   assert.match(page, /The input text\./);
@@ -75,13 +75,13 @@ export function label(value: string | number) { return String(value); }
   assert.match(page, /export function label\(value: string\): string/);
   assert.match(page, /export function label\(value: number\): string/);
   assert.doesNotMatch(page, /label\(value: string \| number\)/);
-  assert.doesNotMatch(project.read('wiki/modules/src/counts.js.md'), /internalHelper|Internal implementation/);
+  assert.doesNotMatch(project.read('dist/realdocs/modules/src/counts.js.md'), /internalHelper|Internal implementation/);
 });
 
-test('renders leading @livedocs:file documentation before the exports of each entry point', t => {
+test('renders leading @realdocs:file documentation before the exports of each entry point', t => {
   const project = fixture(t, {
     'index.ts': `/**
- * @livedocs:file Overview of the **public API**.
+ * @realdocs:file Overview of the **public API**.
  *
  * Use this entry point for new applications.
  *
@@ -101,7 +101,7 @@ export const version = 1;
 /** @livedocs:file Legacy rate service. */
 /** Returns the flat fee. */
 module.exports = function flatFee() { return 450; };
-/** @livedocs:file This comment occurs after a declaration. */
+/** @realdocs:file This comment occurs after a declaration. */
 `,
   });
 
@@ -112,7 +112,7 @@ module.exports = function flatFee() { return 450; };
   assert.match(api, /```mermaid\n---\nconfig:\n  theme: forest\n---\nflowchart TD\n  Source --> Wiki\n```/);
   assert.match(api, /## `version`[\s\S]*Version of the protocol\./);
   assert.equal(api.match(/Overview of the/g)?.length, 1);
-  assert.doesNotMatch(api, /@livedocs:file/);
+  assert.doesNotMatch(api, /@realdocs:file/);
 
   const legacy = project.read('wiki/modules/rates.cjs.md');
   assert.match(legacy, /^# `rates\.cjs`\n\nLegacy rate service\./);
@@ -123,20 +123,20 @@ module.exports = function flatFee() { return 450; };
 test('groups tagged pages and exports in both wiki formats', t => {
   const project = fixture(t, {
     'src/stock.ts': `/**
- * @livedocs:file Stock operations.
- * @livedocs:tag Inventory
- * @livedocs:tag Architecture
- * @livedocs:tag inventory
+ * @realdocs:file Stock operations.
+ * @realdocs:tag Inventory
+ * @realdocs:tag Architecture
+ * @realdocs:tag inventory
  */
 export const defaultStock = 10;
 /**
  * Verify current stock.
- * @livedocs:tag inventory
- * @livedocs:tag Stock Checks
+ * @realdocs:tag inventory
+ * @realdocs:tag Stock Checks
  */
 export function inspectStock() { return defaultStock; }
 `,
-    'docs/guide.md': '<!-- @livedocs:tag inventory -->\n<!-- @livedocs:tag Architecture -->\n\n# Stock guide\n',
+    'docs/guide.md': '<!-- @realdocs:tag inventory -->\n<!-- @livedocs:tag Architecture -->\n\n# Stock guide\n',
   });
   const args = ['--entry', 'src/stock.ts', '--page', 'docs/guide.md', '--strict'];
   project.run('build', ...args, '--out', 'wiki');
@@ -156,14 +156,15 @@ export function inspectStock() { return defaultStock; }
   assert.match(project.read('wiki/modules/src/stock.ts.md'), /\(\.\.\/\.\.\/tags\.md#tag-stock-checks\)/);
   const guide = project.read('site/pages/docs/guide.html');
   assert.match(guide, /href="\.\.\/\.\.\/tags\.html#tag-inventory"/);
-  assert.doesNotMatch(guide, /@livedocs:tag/);
+  assert.match(guide, /href="\.\.\/\.\.\/tags\.html#tag-architecture"/);
+  assert.doesNotMatch(guide, /@(?:realdocs|livedocs):tag/);
   assert.match(project.read('site/tags.html'), /href="modules\/src\/stock\.ts\.html#symbol-inspectStock"/);
 });
 
 test('builds a linked HTML wiki with a local Mermaid runtime', t => {
   const project = fixture(t, {
     'src/index.ts': `/**
- * @livedocs:file **Fulfillment** example.
+ * @realdocs:file **Fulfillment** example.
  *
  * \`\`\`mermaid
  * flowchart TD
@@ -175,7 +176,7 @@ import { shipment } from './shipping.js';
 export const prepare = () => shipment;
 `,
     'src/shipping.ts': `/**
- * @livedocs:file Shipping reference.
+ * @realdocs:file Shipping reference.
  *
  * <script>window.exampleMarker = 1;</script>
  *
@@ -218,8 +219,8 @@ export const shipment = { ready: true };
 test('updates diagram labels and links after a symbol is renamed and moved', t => {
   const source = name => `/**
  * Create an invoice.
- * @livedocs:docId billing.create
- * @livedocs:docUses billing.validate
+ * @realdocs:docId billing.create
+ * @realdocs:docUses billing.validate
  */
 export function ${name}() { return validateInvoice(); }
 /** @livedocs:docId billing.validate */
@@ -260,7 +261,7 @@ flowchart LR
 
 test('keeps unusual export names inside a single Mermaid label', t => {
   const project = fixture(t, {
-    'src/billing.ts': `/** @livedocs:docId billing.special */
+    'src/billing.ts': `/** @realdocs:docId billing.special */
 const original = 1;
 export { original as 'quoted"<item>' };
 `,
@@ -279,11 +280,11 @@ flowchart LR
 test('check rejects duplicate IDs and reports unresolved diagram references at their source', t => {
   const project = fixture(t, {
     'src/billing.ts': `/**
- * @livedocs:docId billing.create
- * @livedocs:docUses billing.missing
+ * @realdocs:docId billing.create
+ * @realdocs:docUses billing.missing
  */
 export function createInvoice() {}
-/** @livedocs:docId billing.create */
+/** @realdocs:docId billing.create */
 export function otherInvoice() {}
 `,
     'docs/flow.md': `# Diagram
@@ -296,7 +297,7 @@ flowchart LR
   });
   const result = project.result('check', '--entry', 'src/billing.ts', '--page', 'docs/flow.md', '--out', 'wiki');
   assert.equal(result.status, 1, result.stderr);
-  assert.match(result.stderr, /error: .*Duplicate.*billing\.create/i);
+  assert.match(result.stderr, /error: Duplicate @realdocs:docId billing\.create/);
   assert.match(result.stderr, /error: .*billing\.missing/);
   assert.match(result.stderr, /docs\/flow\.md:5:\d+: error: .*billing\.gone/);
   assert.equal(existsSync(join(project.cwd, 'wiki')), false);
@@ -304,7 +305,7 @@ flowchart LR
 
 test('check reports unfinished and misplaced diagram directives', t => {
   const project = fixture(t, {
-    'src/billing.ts': '/** @livedocs:docId billing.create */\nexport function createInvoice() {}',
+    'src/billing.ts': '/** @realdocs:docId billing.create */\nexport function createInvoice() {}',
     'docs/flow.md': `# Diagram
 
 \`\`\`mermaid
@@ -331,7 +332,7 @@ Put the graph here {{ diagram.dependencies('billing.create') }}.
 test('keeps HTML navigation and symbol anchors outside the authored overview', t => {
   const project = fixture(t, {
     'index.ts': `/**
- * @livedocs:file Overview with an incomplete example.
+ * @realdocs:file Overview with an incomplete example.
  *
  * <div id="symbol-count"></div>
  *
@@ -355,8 +356,8 @@ test('embeds the file map and its relationships in both wiki indexes', t => {
   const project = fixture(t, {
     'src/index.ts': "export { prepare } from './workflow.js';",
     'src/workflow.ts': `/**
- * @livedocs:file Coordinates stock. See the [guide](../docs/guide.md).
- * @livedocs:zone Operations
+ * @realdocs:file Coordinates stock. See the [guide](../docs/guide.md).
+ * @realdocs:zone Operations
  */
 import type { Order } from './model/order.js';
 import { stock } from './inventory.js';
@@ -364,7 +365,7 @@ export function prepare(order: Order) { return stock(order.quantity); }
 `,
     'src/model/order.ts': 'export interface Order { quantity: number }',
     'src/inventory.ts': 'export const stock = (quantity: number) => quantity > 0;',
-    'docs/guide.md': '<!-- @livedocs:zone Architecture -->\n# Guide\n\n[Workflow](../src/workflow.ts#prepare)\n',
+    'docs/guide.md': '<!-- @realdocs:zone Architecture -->\n# Guide\n\n[Workflow](../src/workflow.ts#prepare)\n',
   });
   const args = ['--entry', 'src/index.ts', '--entry', 'src/workflow.ts', '--page', 'docs/guide.md', '--graph'];
   project.run('build', ...args, '--out', 'wiki');
@@ -420,7 +421,7 @@ test('includes explicitly selected Markdown and resolves links in both wiki form
 [Literal reference](../src/index.ts#example)
 \`\`\`
 `,
-    'src/index.ts': '/** @livedocs:file See the [shipment flow](../docs/architecture.md#shipment-flow). */\nexport function prepareShipment() {}',
+    'src/index.ts': '/** @realdocs:file See the [shipment flow](../docs/architecture.md#shipment-flow). */\nexport function prepareShipment() {}',
     'notes.md': '# Private notes',
   });
   const args = ['--entry', 'src/index.ts', '--page', 'README.md', '--page', 'docs/architecture.md', '--strict'];
@@ -627,7 +628,7 @@ test('preserves an existing output directory that contains user files', t => {
   const result = project.result('build', '--entry', 'index.ts', '--out', 'wiki');
 
   assert.equal(result.status, 1, result.stderr);
-  assert.match(result.stderr, /output directory/i);
+  assert.match(result.stderr, /contains files RealDocs does not manage/);
   assert.deepEqual(readdirSync(join(project.cwd, 'wiki')), ['manual.md']);
   assert.equal(project.read('wiki/manual.md'), 'A manually maintained page.');
 });

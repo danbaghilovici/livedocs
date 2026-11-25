@@ -96,7 +96,7 @@ function compileContent<T extends MarkdownContent>(
   };
   const resolve = (id: string, line: number, column?: number): DiagramSymbol | undefined => {
     const target = registry.get(id);
-    if (!target) report(`Unknown diagram symbol ${id}. Add @livedocs:docId to an included export.`, line, column);
+    if (!target) report(`Unknown diagram symbol ${id}. Add @realdocs:docId to an included export.`, line, column);
     return target;
   };
 
@@ -116,7 +116,7 @@ function compileContent<T extends MarkdownContent>(
     }
     if (token.type !== 'fence' || !/^mermaid(?:\s|$)/.test(token.info.trim()) || !directive.test(token.content)) continue;
     if (token.level !== 0) {
-      report('Place Mermaid diagrams that use Livedocs references in a top-level fence.', start);
+      report('Place Mermaid diagrams that use RealDocs references in a top-level fence.', start);
       continue;
     }
 
@@ -176,7 +176,7 @@ export function compileDiagrams(documentation: Documentation, extension: PageExt
         const location = previous.symbol.location;
         diagnostics.push({
           level: 'error', location: symbol.location,
-          message: `Duplicate @livedocs:docId ${symbol.docId}. Also declared at ${location.file}:${location.line}.`,
+          message: `Duplicate @realdocs:docId ${symbol.docId}. Also declared at ${location.file}:${location.line}.`,
         });
       } else {
         registry.set(symbol.docId, { symbol, file });
@@ -188,7 +188,7 @@ export function compileDiagrams(documentation: Documentation, extension: PageExt
       for (const id of symbol.docUses ?? []) {
         if (!registry.has(id)) diagnostics.push({
           level: 'error', location: symbol.location,
-          message: `Unknown @livedocs:docUses target ${id} on ${symbol.docId}.`,
+          message: `Unknown @realdocs:docUses target ${id} on ${symbol.docId}.`,
         });
       }
     }

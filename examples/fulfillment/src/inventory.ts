@@ -1,11 +1,11 @@
 /**
- * @livedocs:file Tracks available stock and order reservations for one warehouse.
+ * @realdocs:file Tracks available stock and order reservations for one warehouse.
  *
  * The ledger combines duplicate line items and checks every SKU before
  * deducting stock. Releasing a reservation restores the units it held.
  *
- * @livedocs:tag inventory
- * @livedocs:zone Order operations
+ * @realdocs:tag inventory
+ * @realdocs:zone Order operations
  */
 import type { OrderLine, Reservation, Sku, StockStatus } from './contracts.js';
 
@@ -18,7 +18,7 @@ import type { OrderLine, Reservation, Sku, StockStatus } from './contracts.js';
  * | `already-reserved` | Use the original reservation or release it before submitting a replacement. |
  * | `insufficient-stock` | Call {@link inspectStock} and revise the requested quantities. |
  *
- * @livedocs:tag error-handling
+ * @realdocs:tag error-handling
  */
 export class InventoryError extends Error {
   constructor(
@@ -39,9 +39,9 @@ export class InventoryError extends Error {
  * If any requested {@link Sku | SKU} is short, the call throws an
  * {@link InventoryError} and each SKU retains its previous quantity.
  *
- * @livedocs:docId fulfillment.inventory
- * @livedocs:tag inventory
- * @livedocs:tag order-flow
+ * @realdocs:docId fulfillment.inventory
+ * @realdocs:tag inventory
+ * @realdocs:tag order-flow
  * @example
  * const warehouse = new InventoryLedger({ 'MUG-01': 12 });
  * warehouse.reserve('order-17', [{ sku: 'MUG-01', quantity: 2 }]);

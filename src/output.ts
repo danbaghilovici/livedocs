@@ -4,7 +4,9 @@ import {
 } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 
+// Preserve the manifest and lock names so older builds can share the same output directory.
 const manifest = '.livedocs-manifest.json';
+const lockSuffix = '.livedocs-lock';
 
 function lockOwner(lock: string): number | undefined {
   try {
@@ -25,7 +27,7 @@ function stopped(pid: number): boolean {
 }
 
 function keepBackup(backup: string, directory: string): void {
-  const saved = mkdtempSync(join(dirname(directory), '.livedocs-recovered-'));
+  const saved = mkdtempSync(join(dirname(directory), '.realdocs-recovered-'));
   renameSync(backup, join(saved, 'wiki'));
   console.warn(`warning: Previous output was preserved in ${join(saved, 'wiki')}.`);
 }
@@ -53,7 +55,7 @@ function acquireLock(lock: string, directory: string): void {
         if (existsSync(directory)) keepBackup(backup, directory);
         else renameSync(backup, directory);
       }
-      const reclaimed = mkdtempSync(join(dirname(lock), '.livedocs-reclaimed-'));
+      const reclaimed = mkdtempSync(join(dirname(lock), '.realdocs-reclaimed-'));
       try {
         renameSync(lock, join(reclaimed, 'lock'));
       } finally {
@@ -77,7 +79,7 @@ function acquireLock(lock: string, directory: string): void {
 
 function managedFiles(directory: string): Set<string> {
   if (!existsSync(directory)) return new Set();
-  const reject = () => new Error(`The output directory ${directory} contains files Livedocs does not manage. Choose a dedicated output directory.`);
+  const reject = () => new Error(`The output directory ${directory} contains files RealDocs does not manage. Choose a dedicated output directory.`);
   if (!lstatSync(directory).isDirectory()) throw reject();
   if (!readdirSync(directory).length) return new Set();
 
@@ -123,7 +125,7 @@ function removeOldPages(directory: string, paths: ReadonlySet<string>, prefix = 
 export function writeWiki(directory: string, files: ReadonlyMap<string, string>): number {
   const parent = dirname(directory);
   mkdirSync(parent, { recursive: true });
-  const lock = join(parent, `.${basename(directory)}.livedocs-lock`);
+  const lock = join(parent, `.${basename(directory)}${lockSuffix}`);
   acquireLock(lock, directory);
 
   const next = join(lock, 'next');

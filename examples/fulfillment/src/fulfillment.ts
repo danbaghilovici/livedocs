@@ -1,5 +1,5 @@
 /**
- * @livedocs:file Coordinates the shipment workflow from order lines to a reservation and quote.
+ * @realdocs:file Coordinates the shipment workflow from order lines to a reservation and quote.
  *
  * The workflow validates quantities and parcel weight, prices the shipment,
  * and then reserves inventory. Callers receive both the quote and the reservation.
@@ -49,9 +49,9 @@
  *   Reserve -->|Reserved| Plan([Return the quote and reservation])
  * ```
  *
- * @livedocs:tag architecture
- * @livedocs:tag order-flow
- * @livedocs:zone Order operations
+ * @realdocs:tag architecture
+ * @realdocs:tag order-flow
+ * @realdocs:zone Order operations
  */
 import type { FulfillmentOrder, ShipmentPlan, ShippingZone } from './contracts.js';
 import { InventoryError, InventoryLedger, type inspectStock } from './inventory.js';
@@ -81,11 +81,11 @@ import { quoteShipping, type formatShippingQuote } from './shipping.js';
  * @returns The combined {@link ShipmentPlan}.
  * @throws {InventoryError} An order line is invalid or the order cannot be reserved.
  * @throws {RangeError} The parcel exceeds the shipping service's weight limits.
- * @livedocs:docId fulfillment.prepare
- * @livedocs:docUses fulfillment.quote
- * @livedocs:docUses fulfillment.inventory
- * @livedocs:tag order-flow
- * @livedocs:tag error-handling
+ * @realdocs:docId fulfillment.prepare
+ * @realdocs:docUses fulfillment.quote
+ * @realdocs:docUses fulfillment.inventory
+ * @realdocs:tag order-flow
+ * @realdocs:tag error-handling
  * @example
  * const inventory = new InventoryLedger({ 'MUG-01': 12, 'TEA-02': 6 });
  * const plan = prepareShipment(inventory, {

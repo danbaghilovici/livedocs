@@ -1,11 +1,11 @@
 /**
- * @livedocs:file Lists the products and unit weights used by the sample checkout.
+ * @realdocs:file Lists the products and unit weights used by the sample checkout.
  *
  * Add products here to make them available to the [checkout workflow](../integrations/checkout.ts#checkout).
  * Stock levels are supplied separately to the warehouse ledger.
  *
- * @livedocs:tag catalog
- * @livedocs:zone Catalog
+ * @realdocs:tag catalog
+ * @realdocs:zone Catalog
  */
 import type { Sku } from '../contracts.js';
 
@@ -26,7 +26,7 @@ const products = new Map<Sku, Product>([
  * Looks up a product by its exact SKU.
  * @param sku Identifier from a cart line.
  * @returns The catalog product when the SKU is known.
- * @livedocs:docId fulfillment.product
+ * @realdocs:docId fulfillment.product
  */
 export function findProduct(sku: Sku): Product | undefined {
   return products.get(sku);

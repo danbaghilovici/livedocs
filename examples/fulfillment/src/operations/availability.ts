@@ -1,11 +1,11 @@
 /**
- * @livedocs:file Reports availability for the items in a proposed cart.
+ * @realdocs:file Reports availability for the items in a proposed cart.
  *
  * The report is advisory. Use [checkout](../integrations/checkout.ts#checkout) to
  * reserve units against the current ledger, and see the [warehouse guide](../../docs/warehouse.md).
  *
- * @livedocs:tag inventory
- * @livedocs:zone Warehouse support
+ * @realdocs:tag inventory
+ * @realdocs:zone Warehouse support
  */
 import type { CartLine } from '../catalog/orders.js';
 import type { Sku } from '../contracts.js';
@@ -24,7 +24,7 @@ export interface CartAvailability {
  * @param ledger Warehouse to inspect.
  * @param items Validated cart lines, each with a positive integer quantity.
  * @returns One availability row for every distinct SKU, in first-seen order.
- * @livedocs:docId fulfillment.availability
+ * @realdocs:docId fulfillment.availability
  */
 export function checkCartAvailability(ledger: InventoryLedger, items: readonly CartLine[]): CartAvailability[] {
   const quantities = new Map<Sku, number>();

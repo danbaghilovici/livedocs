@@ -1,4 +1,4 @@
-# Livedocs documentation surfaces
+# RealDocs documentation surfaces
 
 The HTML wiki uses a dark charcoal palette with a green accent, serif section headings, system body text, and monospace source references. The index separates guides from source references and embeds the file map as the next section. The graph uses the same ruled surfaces as code samples, with a faint dotted field and separate colors for architectural zones and relationships. Labels, line patterns, and incoming or outgoing descriptions convey the same distinctions independently.
 

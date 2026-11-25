@@ -1,5 +1,5 @@
 /**
- * @livedocs:file Public API for reserving warehouse stock and preparing shipments.
+ * @realdocs:file Public API for reserving warehouse stock and preparing shipments.
  *
  * Use this entry point to create a warehouse, inspect stock, price shipping,
  * or prepare a full shipment. It also exposes the shared order and quote types.
@@ -54,9 +54,9 @@
  * | Prepare a shipment from a retail cart and postal code | `checkout` |
  * | Build a handoff payload and delivery message | `createDispatchRequest` and `shipmentMessage` |
  *
- * @livedocs:tag architecture
- * @livedocs:tag public-api
- * @livedocs:zone Public API
+ * @realdocs:tag architecture
+ * @realdocs:tag public-api
+ * @realdocs:zone Public API
  */
 export type { FulfillmentOrder, OrderLine, Reservation, ShipmentPlan, ShippingQuote, ShippingZone, Sku, StockStatus } from './contracts.js';
 export { prepareShipment } from './fulfillment.js';

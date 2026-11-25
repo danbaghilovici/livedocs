@@ -1,11 +1,11 @@
 /**
- * @livedocs:file Classifies a destination into one of the sample rate zones.
+ * @realdocs:file Classifies a destination into one of the sample rate zones.
  *
  * The demo treats postal prefixes 100, 101, and 102 as local. All other
  * five-digit codes are regional. See the [pricing guide](../../docs/delivery.md#rate-selection).
  *
- * @livedocs:tag shipping
- * @livedocs:zone Delivery
+ * @realdocs:tag shipping
+ * @realdocs:zone Delivery
  */
 import type { ShippingZone } from '../contracts.js';
 
@@ -20,7 +20,7 @@ export interface Destination {
  * @param postalCode Five-digit postal code, with optional surrounding spaces.
  * @returns The postal code and rate zone.
  * @throws {RangeError} The code does not have exactly five digits.
- * @livedocs:docId fulfillment.destination
+ * @realdocs:docId fulfillment.destination
  */
 export function classifyDestination(postalCode: string): Destination {
   const code = postalCode.trim();

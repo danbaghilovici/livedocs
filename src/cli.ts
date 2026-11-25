@@ -12,6 +12,8 @@ import { writeWiki } from './output.js';
 import { createProgram, projectFromArguments, watchProject, type Project } from './project.js';
 import { extractDocumentation } from './typescript.js';
 
+const defaultOutput = 'dist/realdocs';
+
 const help = `Usage: realdocs <build|check|watch> [--entry <file>] [--page <file>] [options]
 
   build             Generate the documentation wiki.
@@ -21,7 +23,7 @@ const help = `Usage: realdocs <build|check|watch> [--entry <file>] [--page <file
   --entry <file>    JS/TS entry point. Repeat for more than one.
   --page <file>     Standalone Markdown page. Repeat for more than one.
   --project <file>  tsconfig.json or jsconfig.json. Defaults to the config in the current directory.
-  --out <dir>       Dedicated output directory. Defaults to dist/livedocs.
+  --out <dir>       Dedicated output directory. Defaults to ${defaultOutput}.
   --format <type>   Output format, markdown (default) or html.
   --graph           Add a file map with relationship types and zones.
   --strict          Treat documentation warnings as build failures.
@@ -109,7 +111,7 @@ async function main(): Promise<void> {
   const project = projectFromArguments(cwd, values.entry ?? [], values.project, values.page);
   const options: RunOptions = {
     check: command === 'check',
-    output: resolve(cwd, values.out ?? 'dist/livedocs'),
+    output: resolve(cwd, values.out ?? defaultOutput),
     extension: format === 'html' ? 'html' : 'md',
     graph: values.graph ?? false,
     renderHtml: format === 'html' && command !== 'check' ? (await import('./html.js')).renderHtmlWiki : undefined,

@@ -1,12 +1,12 @@
 /**
- * @livedocs:file Runs the host-facing checkout workflow for a cart and destination.
+ * @realdocs:file Runs the host-facing checkout workflow for a cart and destination.
  *
  * Checkout resolves product weights and the rate zone before delegating to
  * [shipment preparation](../fulfillment.ts#doc-fulfillment.prepare). Read the
  * [integration walkthrough](../../docs/integrations.md#checkout-to-handoff) for the full request path.
  *
- * @livedocs:tag order-flow
- * @livedocs:zone Integrations
+ * @realdocs:tag order-flow
+ * @realdocs:zone Integrations
  */
 import { orderFromCart, type CartLine } from '../catalog/orders.js';
 import type { FulfillmentOrder, ShipmentPlan } from '../contracts.js';
@@ -28,10 +28,10 @@ export interface CheckoutResult {
  * @param items Requested cart lines.
  * @param postalCode Delivery postal code.
  * @returns The order, destination, quote, and reservation needed by the caller.
- * @livedocs:docId fulfillment.checkout
- * @livedocs:docUses fulfillment.cart
- * @livedocs:docUses fulfillment.destination
- * @livedocs:docUses fulfillment.prepare
+ * @realdocs:docId fulfillment.checkout
+ * @realdocs:docUses fulfillment.cart
+ * @realdocs:docUses fulfillment.destination
+ * @realdocs:docUses fulfillment.prepare
  */
 export function checkout(ledger: InventoryLedger, orderId: string, items: readonly CartLine[], postalCode: string): CheckoutResult {
   const order = orderFromCart(orderId, items);

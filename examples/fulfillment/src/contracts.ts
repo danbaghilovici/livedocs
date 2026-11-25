@@ -1,11 +1,11 @@
 /**
- * @livedocs:file Shared contracts for orders, inventory reservations, and shipping quotes.
+ * @realdocs:file Shared contracts for orders, inventory reservations, and shipping quotes.
  *
  * Quantities are in whole units, weights are in grams, and shipping costs are
  * in cents. The same contracts are used by the TypeScript and JavaScript APIs.
  *
- * @livedocs:tag order-flow
- * @livedocs:zone Data contracts
+ * @realdocs:tag order-flow
+ * @realdocs:zone Data contracts
  */
 
 /** Inventory key for a single sellable item. */
