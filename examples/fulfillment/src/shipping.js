@@ -1,5 +1,5 @@
 /**
- * @livedocs:file Calculates parcel prices and transit estimates for local and regional delivery.
+ * @realdocs:file Calculates parcel prices and transit estimates for local and regional delivery.
  *
  * Each zone has a base fee and a per-kilogram rate. Billable weight rounds up
  * to the next kilogram, and quotes use integer cents before display formatting.
@@ -9,8 +9,8 @@
  * | `local` | 450 cents | 120 cents | 2 business days |
  * | `regional` | 725 cents | 180 cents | 4 business days |
  *
- * @livedocs:tag shipping
- * @livedocs:zone Delivery
+ * @realdocs:tag shipping
+ * @realdocs:zone Delivery
  */
 const rates = /** @type {const} */ ({
   local: { baseCents: 450, kilogramCents: 120, businessDays: 2 },
@@ -24,9 +24,9 @@ const rates = /** @type {const} */ ({
  * @param {number} weightGrams Total parcel weight in whole grams.
  * @returns {import('./contracts.js').ShippingQuote} Cost in cents and estimated transit time.
  * @throws {RangeError} The weight is outside the supported range of 1 to 30,000 grams.
- * @livedocs:docId fulfillment.quote
- * @livedocs:tag shipping
- * @livedocs:tag pricing
+ * @realdocs:docId fulfillment.quote
+ * @realdocs:tag shipping
+ * @realdocs:tag pricing
  * @example
  * quoteShipping('regional', 1_250); // { zone: 'regional', cents: 1085, businessDays: 4 }
  */

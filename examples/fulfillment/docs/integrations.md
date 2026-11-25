@@ -1,6 +1,6 @@
-<!-- @livedocs:tag order-flow -->
-<!-- @livedocs:tag public-api -->
-<!-- @livedocs:zone Guides -->
+<!-- @realdocs:tag order-flow -->
+<!-- @realdocs:tag public-api -->
+<!-- @realdocs:zone Guides -->
 
 # Host integration
 

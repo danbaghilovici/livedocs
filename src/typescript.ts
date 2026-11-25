@@ -213,9 +213,11 @@ function unresolvedModules(program: ts.Program, checker: ts.TypeChecker, project
   return diagnostics;
 }
 
-function livedocsTags(tags: readonly ts.JSDocTag[] = []) {
+function realdocsTags(tags: readonly ts.JSDocTag[] = []) {
   return tags.flatMap(node => {
-    if (node.tagName.text !== 'livedocs' || node.getSourceFile().text[node.tagName.end] !== ':') return [];
+    const namespace = node.tagName.text;
+    if (namespace !== 'realdocs' && namespace !== 'livedocs') return [];
+    if (node.getSourceFile().text[node.tagName.end] !== ':') return [];
 
     // TypeScript parses the namespace as the tag name and the suffix as comment text.
     const text = ts.getTextOfJSDocComment(node.comment) ?? '';
@@ -225,12 +227,12 @@ function livedocsTags(tags: readonly ts.JSDocTag[] = []) {
   });
 }
 
-function tagLabelsFrom(tags: ReturnType<typeof livedocsTags>): string[] {
+function tagLabelsFrom(tags: ReturnType<typeof realdocsTags>): string[] {
   return normalizeTagLabels(tags.filter(tag => tag.name === 'tag').map(tag => tag.value));
 }
 
 function symbolReferences(
-  annotations: ReturnType<typeof livedocsTags>,
+  annotations: ReturnType<typeof realdocsTags>,
   error: (message: string, node: ts.Node) => void,
 ): { docId?: string; docUses?: string[] } {
   let docId: string | undefined;
@@ -239,14 +241,14 @@ function symbolReferences(
   for (const { name, value, node } of annotations) {
     if (name !== 'docId' && name !== 'docUses') continue;
     if (!/^[a-zA-Z][a-zA-Z0-9._-]*$/.test(value)) {
-      error(`Invalid @livedocs:${name} identifier ${JSON.stringify(value)}. Use a letter followed by letters, digits, dots, hyphens, or underscores.`, node);
+      error(`Invalid @realdocs:${name} identifier ${JSON.stringify(value)}. Use a letter followed by letters, digits, dots, hyphens, or underscores.`, node);
       continue;
     }
     if (name === 'docUses') uses.add(value);
-    else if (docId && docId !== value) error(`A symbol can have only one @livedocs:docId. Found ${docId} and ${value}.`, node);
+    else if (docId && docId !== value) error(`A symbol can have only one @realdocs:docId. Found ${docId} and ${value}.`, node);
     else docId = value;
   }
-  if (!docId && uses.size) error('Declare @livedocs:docId on a symbol with @livedocs:docUses.', relationships[0].node);
+  if (!docId && uses.size) error('Declare @realdocs:docId on a symbol with @realdocs:docUses.', relationships[0].node);
   return { docId, docUses: uses.size ? [...uses].sort() : undefined };
 }
 
@@ -254,7 +256,7 @@ function fileOverview(file: ts.SourceFile): MarkdownContent | undefined {
   for (const range of ts.getLeadingCommentRanges(file.text, 0) ?? []) {
     if (range.kind !== ts.SyntaxKind.MultiLineCommentTrivia) continue;
     const comment = file.text.slice(range.pos, range.end);
-    if (!comment.startsWith('/**') || !comment.includes('@livedocs:file')) continue;
+    if (!comment.startsWith('/**') || !/@(?:realdocs|livedocs):file/.test(comment)) continue;
 
     // Parse the header by itself so a separate comment on the first declaration can coexist with it.
     const header = ts.createSourceFile(file.fileName, comment, {
@@ -262,7 +264,7 @@ function fileOverview(file: ts.SourceFile): MarkdownContent | undefined {
       jsDocParsingMode: ts.JSDocParsingMode.ParseAll,
     }, true);
     const block = ts.getJSDocCommentsAndTags(header.endOfFileToken).find(ts.isJSDoc);
-    const annotations = livedocsTags(block?.tags);
+    const annotations = realdocsTags(block?.tags);
     const tag = annotations.find(item => item.name === 'file');
     if (!tag) continue;
 
@@ -389,8 +391,8 @@ export function extractDocumentation(program: ts.Program, project: Project, with
         diagnostics.push({ level: 'warning', message, location: node ? locate(node) : location });
       };
       const tags = (entry.symbol.declarations ?? [entry.declaration]).flatMap(declaration => ts.getJSDocTags(declaration));
-      const annotations = livedocsTags(tags).filter(({ node }) => !ts.isJSDoc(node.parent) ||
-        !livedocsTags(node.parent.tags).some(item => item.name === 'file'));
+      const annotations = realdocsTags(tags).filter(({ node }) => !ts.isJSDoc(node.parent) ||
+        !realdocsTags(node.parent.tags).some(item => item.name === 'file'));
       const key = declarationKey(entry.declaration.getSourceFile().fileName, entry.declaration.getStart());
       const references = lookup.get(key) === entry.id ? symbolReferences(annotations, (message, node) => {
         diagnostics.push({ level: 'error', message, location: locate(node) });

@@ -85,7 +85,7 @@ const runner = `
     try {
       const diagram = await mermaid.parse(source, { suppressErrors: true });
       if (!diagram) continue;
-      const { svg } = await mermaid.render('livedocs-diagram-' + index, source);
+      const { svg } = await mermaid.render('realdocs-diagram-' + index, source);
       const figure = document.createElement('figure');
       figure.className = 'mermaid-diagram';
       if (diagram.diagramType === 'c4') figure.classList.add('mermaid-c4');

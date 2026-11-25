@@ -1,5 +1,5 @@
-<!-- @livedocs:tag shipping -->
-<!-- @livedocs:zone Guides -->
+<!-- @realdocs:tag shipping -->
+<!-- @realdocs:zone Guides -->
 
 # Delivery and carrier handoff
 

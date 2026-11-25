@@ -1,6 +1,6 @@
-<!-- @livedocs:tag architecture -->
-<!-- @livedocs:tag order-flow -->
-<!-- @livedocs:zone Guides -->
+<!-- @realdocs:tag architecture -->
+<!-- @realdocs:tag order-flow -->
+<!-- @realdocs:zone Guides -->
 
 # Fulfillment architecture
 
@@ -20,7 +20,7 @@ See the [shipment workflow](../src/fulfillment.ts#shipment-workflow) for the bra
 
 ## Declared dependencies
 
-This diagram follows the `@livedocs:docUses` relationships on the shipment coordinator. The links below it lead to the documented exports.
+This diagram follows the `@realdocs:docUses` relationships on the shipment coordinator. The links below it lead to the documented exports.
 
 {{ diagram.dependencies('fulfillment.prepare') }}
 

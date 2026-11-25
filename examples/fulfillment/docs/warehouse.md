@@ -1,6 +1,6 @@
-<!-- @livedocs:tag inventory -->
-<!-- @livedocs:tag error-handling -->
-<!-- @livedocs:zone Guides -->
+<!-- @realdocs:tag inventory -->
+<!-- @realdocs:tag error-handling -->
+<!-- @realdocs:zone Guides -->
 
 # Warehouse operations
 

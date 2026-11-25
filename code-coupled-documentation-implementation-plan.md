@@ -125,7 +125,7 @@ For each relationship, record **provenance** (`source-annotation`, `static-analy
 - An ID can be explicitly deprecated or aliased to another ID, with diagnostics; silent heuristics should not be the default.
 - Versioned builds resolve IDs against the source snapshot checked out for the release.
 
-**Open design decision:** support both inline `@livedocs:docId` annotations and an external stable-ID mapping/manifest. MVP can require explicit inline IDs; the external mapping enables cleaner source code and more languages later.
+**Open design decision:** support both inline `@realdocs:docId` annotations and an external stable-ID mapping/manifest. MVP can require explicit inline IDs; the external mapping enables cleaner source code and more languages later.
 
 ### 4.4 Suggested intermediate representation (IR)
 
@@ -161,11 +161,11 @@ The IR should be serializable for debugging/caching but not require a database s
 
 ```ts
 /**
- * @livedocs:docId billing.create
- * @livedocs:docGroup billing.invoice-lifecycle
- * @livedocs:docTitle Creating an invoice
- * @livedocs:docSummary Validates and saves a new invoice.
- * @livedocs:docUses billing.validate
+ * @realdocs:docId billing.create
+ * @realdocs:docGroup billing.invoice-lifecycle
+ * @realdocs:docTitle Creating an invoice
+ * @realdocs:docSummary Validates and saves a new invoice.
+ * @realdocs:docUses billing.validate
  */
 export async function createInvoice(customerId: string) {
   validateCustomer(customerId);
@@ -173,8 +173,8 @@ export async function createInvoice(customerId: string) {
 }
 
 /**
- * @livedocs:docId billing.validate
- * @livedocs:docSummary Checks whether a customer is valid.
+ * @realdocs:docId billing.validate
+ * @realdocs:docSummary Checks whether a customer is valid.
  */
 export function validateCustomer(customerId: string) {
   // ...
@@ -189,14 +189,14 @@ Support longer Markdown fragments alongside metadata, e.g.:
 
 ```ts
 /**
- * @livedocs:docId billing.create
- * @livedocs:docTitle Invoice creation
- * @livedocs:docBody
+ * @realdocs:docId billing.create
+ * @realdocs:docTitle Invoice creation
+ * @realdocs:docBody
  * ## Validation
  *
  * The customer is validated before an invoice is saved.
  * See {{ symbol("billing.validate").name }}.
- * @livedocs:endDocBody
+ * @realdocs:endDocBody
  */
 export async function createInvoice(customerId: string) { /* ... */ }
 ```
@@ -209,15 +209,15 @@ Architecture concepts should not need a matching function:
 
 ```ts
 /**
- * @livedocs:docId architecture.billing
- * @livedocs:docKind component
- * @livedocs:docTitle Billing architecture
- * @livedocs:docGroup architecture
- * @livedocs:docRef billing.create
- * @livedocs:docRef billing.validate
- * @livedocs:docBody
+ * @realdocs:docId architecture.billing
+ * @realdocs:docKind component
+ * @realdocs:docTitle Billing architecture
+ * @realdocs:docGroup architecture
+ * @realdocs:docRef billing.create
+ * @realdocs:docRef billing.validate
+ * @realdocs:docBody
  * The billing module coordinates validation and invoice creation.
- * @livedocs:endDocBody
+ * @realdocs:endDocBody
  */
 ```
 
@@ -337,9 +337,9 @@ Use explicit graph relationships as source data:
 
 ```ts
 /**
- * @livedocs:docId billing.create
- * @livedocs:docUses billing.validate
- * @livedocs:docUses billing.persist
+ * @realdocs:docId billing.create
+ * @realdocs:docUses billing.validate
+ * @realdocs:docUses billing.persist
  */
 export function createInvoice() {}
 ```
@@ -587,7 +587,7 @@ Consider a PR workflow running `docsync diff` and publishing a documentation imp
 
 ### Phase 1 — Core compiler (minimum viable product)
 
-**Scope:** TypeScript symbol extraction; inline stable `@livedocs:docId` and `@livedocs:docSummary`; source metadata; basic Markdown templates; `symbol(id).name`, `.signature`, `.source`; reusable fragments; `check` and `build`; deterministic standalone Markdown.
+**Scope:** TypeScript symbol extraction; inline stable `@realdocs:docId` and `@realdocs:docSummary`; source metadata; basic Markdown templates; `symbol(id).name`, `.signature`, `.source`; reusable fragments; `check` and `build`; deterministic standalone Markdown.
 
 **Tasks**
 
@@ -602,7 +602,7 @@ Consider a PR workflow running `docsync diff` and publishing a documentation imp
 
 **Acceptance tests**
 
-- Rename symbol, retain `@livedocs:docId`: generated name/signature updates without editing template.
+- Rename symbol, retain `@realdocs:docId`: generated name/signature updates without editing template.
 - Move symbol across files: generated source location changes while reference resolves.
 - Missing/duplicate ID: actionable diagnostic and non-zero exit.
 - Multiple documents include the same fragment, compiled consistently.

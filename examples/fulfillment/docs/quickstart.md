@@ -1,6 +1,6 @@
-<!-- @livedocs:tag getting-started -->
-<!-- @livedocs:tag order-flow -->
-<!-- @livedocs:zone Guides -->
+<!-- @realdocs:tag getting-started -->
+<!-- @realdocs:tag order-flow -->
+<!-- @realdocs:zone Guides -->
 
 # First shipment
 

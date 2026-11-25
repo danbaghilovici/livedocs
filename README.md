@@ -6,22 +6,24 @@ RealDocs generates linked Markdown or HTML documentation from JavaScript and Typ
 
 ## Quick start
 
-Use Node.js 22 or later. To run from source, see [Development](#development). Once an npm release is available, install it in the project you want to document.
+Use Node.js 22 or later. Install RealDocs in the project you want to document.
 
 ```sh
 npm install --save-dev realdocs
-npx realdocs build --entry src/index.ts --timings
+npx realdocs build --entry src/index.ts --out dist/realdocs --timings
 ```
 
 For a one-off run, use the same command with an explicit package version.
 
 ```sh
-npx realdocs@0.1.0 build --entry src/index.ts
+npx realdocs@0.1.0 build --entry src/index.ts --out dist/realdocs
 ```
 
-Open `dist/livedocs/index.md` in a Markdown viewer. Each entry point gets a page with its top-level exports, including re-exports. Links between documented exports resolve against the generated pages.
+Open `dist/realdocs/index.md` in a Markdown viewer. Each entry point gets a page with its top-level exports, including re-exports. Links between documented exports resolve against the generated pages.
 
-Add a leading JSDoc comment such as `/** @livedocs:file Handles shipment pricing and transit estimates. */` to place an overview under the generated page title.
+The annotation examples below use the current source checkout. See [Development](#development) to try them with the local CLI.
+
+Add a leading JSDoc comment such as `/** @realdocs:file Handles shipment pricing and transit estimates. */` to place an overview under the generated page title.
 
 The [fulfillment example](https://github.com/danbaghilovici/realdocs/tree/main/examples/fulfillment) includes a mixed JS/TS checkout workflow, linked guides, and edits to try in watch mode.
 
@@ -33,27 +35,27 @@ Repeat `--page` to include Markdown files on the wiki home. Use `--page` on its 
 npx realdocs build --entry src/index.ts --page README.md --page docs/architecture.md
 ```
 
-In a selected Markdown page or a source file's `@livedocs:file` overview, write links relative to that source file. RealDocs updates links to selected pages, headings, and exports for the output format. From `docs/architecture.md`, `[Prepare a shipment](../src/index.ts#prepareShipment)` links to the `prepareShipment` export on the generated API page. Heading fragments use lowercase slugs such as `#failure-and-retry`.
+In a selected Markdown page or a source file's `@realdocs:file` overview, write links relative to that source file. RealDocs updates links to selected pages, headings, and exports for the output format. From `docs/architecture.md`, `[Prepare a shipment](../src/index.ts#prepareShipment)` links to the `prepareShipment` export on the generated API page. Heading fragments use lowercase slugs such as `#failure-and-retry`.
 
 `check --strict` reports links to Markdown or JS/TS files missing from the input list and fragments with no matching heading or export. `watch` follows the Markdown files supplied with `--page`.
 
 ## Tags
 
-Add one `@livedocs:tag` per line in an `@livedocs:file` comment or in the JSDoc for an exported symbol.
+Add one `@realdocs:tag` per line in an `@realdocs:file` comment or in the JSDoc for an exported symbol.
 
 ```ts
 /**
- * @livedocs:file Tracks warehouse stock and order reservations.
- * @livedocs:tag inventory
- * @livedocs:tag order-flow
+ * @realdocs:file Tracks warehouse stock and order reservations.
+ * @realdocs:tag inventory
+ * @realdocs:tag order-flow
  */
 ```
 
-For a standalone Markdown page, put `<!-- @livedocs:tag architecture -->` at the top and include the file with `--page`. Tag names are case-insensitive, and spaces become hyphens. Tagged items link to a **Tags** index in both formats.
+For a standalone Markdown page, put `<!-- @realdocs:tag architecture -->` at the top and include the file with `--page`. Tag names are case-insensitive, and spaces become hyphens. Tagged items link to a **Tags** index in both formats.
 
 ## Code-linked diagrams
 
-Give an exported symbol a stable `@livedocs:docId`. Use that ID in Mermaid blocks in an `@livedocs:file` overview or an included Markdown page.
+Give an exported symbol a stable `@realdocs:docId`. Use that ID in Mermaid blocks in an `@realdocs:file` overview or an included Markdown page.
 
 ````md
 ```mermaid
@@ -63,14 +65,14 @@ flowchart LR
 ```
 ````
 
-RealDocs resolves the label from the current export name and puts the documentation link below the diagram. Keep the ID when moving or renaming the export. To generate a graph from repeatable `@livedocs:docUses` declarations, put `{{ diagram.dependencies('fulfillment.prepare') }}` in its own paragraph. `check` reports duplicate IDs, unknown dependency targets, and invalid diagram references.
+RealDocs resolves the label from the current export name and puts the documentation link below the diagram. Keep the ID when moving or renaming the export. To generate a graph from repeatable `@realdocs:docUses` declarations, put `{{ diagram.dependencies('fulfillment.prepare') }}` in its own paragraph. `check` reports duplicate IDs, unknown dependency targets, and invalid diagram references.
 
 ## HTML output
 
 Pass `--format html` to `build` or `watch` to generate linked HTML pages. Open `index.html` in a browser. Pages with Mermaid diagrams use a local renderer packaged in the output directory.
 
 ```sh
-npx realdocs build --entry src/index.ts --format html --out dist/livedocs-html
+npx realdocs build --entry src/index.ts --format html --out dist/realdocs-html
 ```
 
 Use separate output directories to keep both formats. The default format is Markdown.
@@ -79,9 +81,9 @@ Use separate output directories to keep both formats. The default format is Mark
 
 Add `--graph` to `build` or `watch` to embed a **File map** section on the wiki home. HTML provides an offline, interactive graph with search, zone and relationship filters, and incoming and outgoing links for the selected file. Markdown provides a Mermaid graph and a file list grouped by zone.
 
-The map follows the compiler's local files from the configured entry points and includes Markdown files selected with `--page`. It shows explicit imports, type-only imports and re-exports, ordinary re-exports, resolved documentation links, and `@livedocs:docUses` relationships. A file links to its wiki page when it was supplied as an entry or page.
+The map follows the compiler's local files from the configured entry points and includes Markdown files selected with `--page`. It shows explicit imports, type-only imports and re-exports, ordinary re-exports, resolved documentation links, and `@realdocs:docUses` relationships. A file links to its wiki page when it was supplied as an entry or page.
 
-Files appear in their containing folder's zone by default. Add `@livedocs:zone Order operations` to the `@livedocs:file` comment, or `<!-- @livedocs:zone Guides -->` at the top of a Markdown page, to group files from different folders.
+Files appear in their containing folder's zone by default. Add `@realdocs:zone Order operations` to the `@realdocs:file` comment, or `<!-- @realdocs:zone Guides -->` at the top of a Markdown page, to group files from different folders.
 
 ```sh
 npm --prefix examples/fulfillment run docs -- build --format html --out dist/wiki-html
@@ -99,7 +101,7 @@ Repeat `--entry` for each public entry point. Paths on the command line are rela
 
 `check` validates syntax, static module references, and JSDoc for documented exports. Use your project's TypeScript checker for full type checking. If the selected config file is deleted while watching, restart `watch` after restoring it.
 
-Use `--out` to choose a dedicated output directory. RealDocs checks output ownership before replacing generated pages and retains the last successful wiki when a source error prevents a build. Use `--strict` to fail on documentation warnings, or `--timings` to report build phase timings.
+The current source checkout defaults to `dist/realdocs`. Use `--out` to choose a dedicated output directory. RealDocs checks output ownership before replacing generated pages and retains the last successful wiki when a source error prevents a build. Use `--strict` to fail on documentation warnings, or `--timings` to report build phase timings.
 
 ## Development
 

@@ -27,7 +27,7 @@ function readPageAnnotations(text: string): MarkdownContent {
   for (; firstLine < lines.length; firstLine++) {
     const line = lines[firstLine].trim();
     if (!line) continue;
-    const annotation = /^<!--\s*@livedocs:(tag|zone)(?:[ \t]+(.*?))?\s*-->$/.exec(line);
+    const annotation = /^<!--\s*@(?:realdocs|livedocs):(tag|zone)(?:[ \t]+(.*?))?\s*-->$/.exec(line);
     if (!annotation) break;
     annotated = true;
     if (annotation[1] === 'tag') tags.push(annotation[2] ?? '');

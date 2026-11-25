@@ -1,12 +1,12 @@
 /**
- * @livedocs:file CommonJS shipping entry point for integrations that use flat zone fees.
+ * @realdocs:file CommonJS shipping entry point for integrations that use flat zone fees.
  *
  * Returns a fixed fee in cents for a destination zone. New integrations can
  * use the weight-based shipping API for a parcel quote and transit estimate.
  *
- * @livedocs:tag shipping
- * @livedocs:tag legacy
- * @livedocs:zone Compatibility
+ * @realdocs:tag shipping
+ * @realdocs:tag legacy
+ * @realdocs:zone Compatibility
  */
 
 /**
