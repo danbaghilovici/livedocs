@@ -1,6 +1,6 @@
 {
   "name": "realdocs",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Generate a Markdown or HTML wiki from source code and its documentation comments.",
   "license": "MIT",
   "repository": {
@@ -34,7 +34,7 @@
   "dependencies": {
     "cytoscape": "3.34.3",
     "markdown-it": "15.0.3",
-    "mermaid": "11.14.0",
+    "mermaid": "12.3.0",
     "micromark": "4.0.2",
     "typescript": "6.0.3"
   },

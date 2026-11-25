@@ -4,7 +4,11 @@ import ts from 'typescript';
 import { configName, packageInfo, record, sourceFile, type Config } from './config.js';
 import { projectPath } from './project.js';
 
-const ignored = new Set(['node_modules', 'dist', 'build', 'coverage', 'out', 'vendor']);
+// Build output, dependencies, and test code with its fixtures and end-to-end suites.
+const ignored = new Set(['node_modules', 'dist', 'build', 'coverage', 'out', 'vendor',
+  'test', 'tests', '__tests__', 'e2e', 'fixtures', '__fixtures__', '__mocks__']);
+// Instructions for coding agents, which the maintenance rule asks to keep out of the wiki.
+const agentInstructions = /^(?:AGENTS(?:\.override)?|CLAUDE|GEMINI)\.md$/i;
 const configFile = /^(?:tsconfig(?:\.(?:app|lib))?|jsconfig)\.json$/;
 const entryName = /^(?:main|index)\.(?:[jt]sx?|[cm][jt]s)$/i;
 const testFile = /(?:\.(?:spec|test|d)|-spec)\.[cm]?[jt]sx?$/i;
@@ -139,7 +143,7 @@ export function discoverConfig(directory: string): Config {
 
   const pages: string[] = [];
   const folders = [...byFolder.keys()].filter(path => path !== '.').sort((a, b) => b.length - a.length);
-  for (const file of files.filter(file => /\.md$/i.test(file))) {
+  for (const file of files.filter(file => /\.md$/i.test(file) && !agentInstructions.test(posix.basename(file)))) {
     const owner = folders.find(folder => within(folder, file));
     if (!owner) pages.push(file);
     else (byFolder.get(owner)!.pages ??= []).push(file);

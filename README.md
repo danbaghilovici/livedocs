@@ -16,7 +16,7 @@ npx realdocs build --entry src/index.ts --out dist/realdocs --timings
 For a one-off run, use the same command with an explicit package version.
 
 ```sh
-npx realdocs@0.1.0 build --entry src/index.ts --out dist/realdocs
+npx realdocs@0.2.0 build --entry src/index.ts --out dist/realdocs
 ```
 
 Open `dist/realdocs/index.md` in a Markdown viewer. Each entry point gets a page with its top-level exports, including re-exports. Links between documented exports resolve against the generated pages.
@@ -37,6 +37,8 @@ Run `npx realdocs init` from the directory you want to document. It uses TypeScr
 
 `init` also discovers Markdown files. It assigns guides inside a discovered section to that section and lists unassigned guides under the top-level `pages` field. For example, a root `ARCHITECTURE.md` appears as a guide. Use `npx realdocs init --print` to preview discovery without writing a file. Once the config exists, edit it directly.
 
+Discovery skips dependencies, build output, and test code: folders named `test`, `tests`, `__tests__`, `e2e`, `fixtures`, `__fixtures__`, and `__mocks__`. It also leaves out agent instruction files (`AGENTS.md`, `AGENTS.override.md`, `CLAUDE.md`, and `GEMINI.md`). It cannot tell vendored code or third-party templates from your own, so remove those from the generated config.
+
 After generating or editing the config, use the usual commands.
 
 ```sh
@@ -54,6 +56,7 @@ Paths are relative to the directory containing `realdocs.json`.
 
 ```json
 {
+  "sourceUrl": "https://github.com/acme/fulfillment/blob/main",
   "pages": ["README.md", "ARCHITECTURE.md"],
   "sections": {
     "orders": {
@@ -73,6 +76,7 @@ Paths are relative to the directory containing `realdocs.json`.
 
 | Field | Purpose |
 | --- | --- |
+| `sourceUrl` | Optional URL of the config directory in a source browser, such as `https://github.com/<owner>/<repo>/blob/<branch>`. Links to existing project files outside the wiki point there instead of being reported. [Links](#links) |
 | Top-level `pages` | Markdown guides linked from the wiki homepage. |
 | `sections` | Named groups of source files and guides. Each key identifies a section in the wiki. Use lowercase letters, digits, hyphens, and underscores, starting with a letter or digit. |
 | `sections.<id>.title` | Optional display name. The section ID is the default. |
@@ -152,9 +156,25 @@ Repeat `--page` to include Markdown files on the wiki home. Use `--page` on its 
 npx realdocs build --entry src/index.ts --page README.md --page docs/architecture.md
 ```
 
-In a selected Markdown page or a source file's `@realdocs:file` overview, write links relative to that source file. RealDocs updates links to selected pages, headings, and exports for the output format. From `docs/architecture.md`, `[Prepare a shipment](../src/index.ts#prepareShipment)` links to the `prepareShipment` export on the generated API page. Heading fragments use lowercase slugs such as `#failure-and-retry`.
+`watch` follows the Markdown files supplied with `--page`.
 
-`check --strict` reports links to Markdown or JS/TS files missing from the input list and fragments with no matching heading or export. `watch` follows the Markdown files supplied with `--page`.
+### Links
+
+In a selected Markdown page or a source file's `@realdocs:file` overview, write links relative to that source file. RealDocs updates links to selected pages, headings, and exports for the output format. From `docs/architecture.md`, `[Prepare a shipment](../src/index.ts#prepareShipment)` links to the `prepareShipment` export on the generated API page.
+
+Fragments resolve the way GitHub resolves them, so a link that works on GitHub works in the wiki.
+
+- **Headings** use GitHub's slugs: lowercase, punctuation removed, and each space replaced by a hyphen. `## 8. Failure — and retry` is `#8-failure--and-retry`.
+- **Explicit anchors** are empty `<a id="deploy-phases"></a>` or `<a name="deploy-phases"></a>` elements. Both formats keep them. HTML output renders only this form and escapes any other raw HTML.
+- **Line fragments** such as `#L42`, `#L42-L60`, or `#L42C3-L60C8` land on the nearest heading or export at or above that line, or on the top of the page.
+
+`check` reports each link that the wiki cannot follow, with its source line:
+
+- A link to a file that does not exist.
+- A link to an existing Markdown or JS/TS file that is not a wiki input. Add the file to the inputs, or set [`sourceUrl`](#example-realdocsjson) to link it to its source instead. With `sourceUrl`, links to other project files and folders, such as scripts or SQL migrations, point to their source too. A [versioned build](#versioned-builds) with a GitHub `origin` links tracked files at its commit.
+- A fragment with no matching heading, anchor, or export.
+
+`check --strict` fails on any of them.
 
 ## Tags
 
@@ -242,7 +262,7 @@ Check out the source commit you want to document, then build with a version labe
 npx realdocs build --version 1.2.0 --format html
 ```
 
-The default directory is `dist/realdocs-releases/1.2.0`. The checkout must have clean tracked files and the documentation inputs must be tracked by Git. The output includes `release.json` with the source commit, symbol routes, and SHA-256 fingerprints for inputs and outputs. A GitHub `origin` gives tracked symbols source links pinned to the commit. Identical rebuilds can reuse the same directory. Choose a new version or empty directory to write different output.
+The default directory is `dist/realdocs-releases/1.2.0`. The checkout must have clean tracked files and the documentation inputs must be tracked by Git. The output includes `release.json` with the source commit, symbol routes, and SHA-256 fingerprints for inputs and outputs. A GitHub `origin` gives tracked symbols, and links to tracked files outside the wiki, source links pinned to the commit. Identical rebuilds can reuse the same directory. Choose a new version or empty directory to write different output.
 
 ## Development
 
