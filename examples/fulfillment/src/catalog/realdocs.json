@@ -1,0 +1,8 @@
+{
+  "sections": {
+    "catalog": {
+      "title": "Catalog",
+      "entries": ["orders.ts", "products.ts"]
+    }
+  }
+}

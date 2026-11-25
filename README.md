@@ -76,9 +76,37 @@ Paths are relative to the directory containing `realdocs.json`.
 | Top-level `pages` | Markdown guides linked from the wiki homepage. |
 | `sections` | Named groups of source files and guides. Each key identifies a section in the wiki. Use lowercase letters, digits, hyphens, and underscores, starting with a letter or digit. |
 | `sections.<id>.title` | Optional display name. The section ID is the default. |
+| `sections.<id>.config` | Optional path to another RealDocs config. Includes that project's inputs in the section. |
 | `sections.<id>.project` | Optional path to a compiler config for this section. It supplies compiler settings and path aliases. If omitted, RealDocs uses the root `tsconfig.json` or `jsconfig.json` when available. |
 | `sections.<id>.entries` | JavaScript or TypeScript files selected for documentation. |
 | `sections.<id>.pages` | Markdown guides linked from the section's landing page. |
+
+### Repo-wide and standalone app wikis
+
+Run `npx realdocs init` in each app folder and curate its `realdocs.json`. In the repo-root `realdocs.json`, reference those files from named sections and add any shared guides.
+
+```json
+{
+  "pages": ["ARCHITECTURE.md"],
+  "sections": {
+    "orders": { "title": "Orders API", "config": "apps/orders/realdocs.json" },
+    "billing": { "title": "Billing API", "config": "apps/billing/realdocs.json" }
+  }
+}
+```
+
+The repo-wide wiki groups each app's guides and source entries under its named section. App entries, guides, and compiler paths are resolved from the app config's directory. Each app's own wiki uses the sections defined in its config. A section with `config` can also set `title`. Keep `entries`, `pages`, and `project` in the app config.
+
+Run these commands from the repo root to build the combined HTML wiki and the standalone Orders wiki.
+
+```sh
+npx realdocs build --format html
+(cd apps/orders && npx realdocs build --format html)
+```
+
+The homepages are `dist/realdocs/index.html` and `apps/orders/dist/realdocs/index.html`, respectively. Run `npx realdocs check --strict` from the same directory as the wiki you want to validate.
+
+The combined examples config references the standalone fulfillment config. The fulfillment guide shows how to build both wikis. [Combined config](examples/realdocs.json) · [App config](examples/fulfillment/realdocs.json) · [Build commands](examples/fulfillment/README.md#generate-html)
 
 ### Homepage and Mermaid C4 diagrams
 
@@ -175,7 +203,7 @@ The map follows the compiler's local files from the configured entry points and 
 Files appear in their containing folder's zone by default. Add `@realdocs:zone Order operations` to the `@realdocs:file` comment, or `<!-- @realdocs:zone Guides -->` at the top of a Markdown page, to group files from different folders.
 
 ```sh
-npm --prefix examples/fulfillment run docs -- build --format html --out dist/wiki-html
+(cd examples/fulfillment && node ../../dist/cli.js build --strict --graph --format html --out dist/wiki-html)
 ```
 
 ## Commands

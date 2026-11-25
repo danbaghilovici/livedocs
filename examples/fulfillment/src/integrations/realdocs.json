@@ -1,0 +1,8 @@
+{
+  "sections": {
+    "integrations": {
+      "title": "Integrations",
+      "entries": ["checkout.ts", "notification.ts"]
+    }
+  }
+}

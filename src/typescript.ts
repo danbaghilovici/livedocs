@@ -425,12 +425,12 @@ export function extractDocumentations(compilations: Compilation[], withGraph = f
   const diagnostics: Diagnostic[] = [];
   const lookup = new Map<string, string>();
   const primary = new Set<string>();
-  // Prefer the closest compiler config when the same source file belongs to more than one section.
+  // Prefer the closest compiler context when the same source file belongs to more than one section.
   const owners = new Map<string, { compilation: Compilation; depth: number }>();
   for (const compilation of compilations) {
-    const config = compilation.project.config;
+    const { compilerDirectory, config, directory } = compilation.project;
     for (const entry of compilation.project.entries) {
-      const parent = config ? dirname(config) : compilation.project.directory;
+      const parent = compilerDirectory ?? (config ? dirname(config) : directory);
       const relative = projectPath(parent, entry);
       const depth = relative.startsWith('../') || relative === '..' || isAbsolute(relative) ? 0 : parent.length;
       if ((owners.get(entry)?.depth ?? -1) < depth) owners.set(entry, { compilation, depth });

@@ -9,10 +9,15 @@ Run these commands from the RealDocs repository root.
 
 ```sh
 npm run build
-npm --prefix examples/fulfillment run docs -- build
+(cd examples/fulfillment && node ../../dist/cli.js build --strict --graph --out dist/wiki)
+(cd examples && node ../dist/cli.js build --strict --graph --out dist/wiki)
 ```
 
-Open `dist/wiki/index.md`. The wiki includes this guide and the standalone [architecture guide](docs/architecture.md). The [shipment page](src/fulfillment.ts) links to inventory, shipping, and contract pages. The [public API page](src/index.ts) includes the `WarehouseInventory` re-export and both `inspectStock` overloads. The [legacy page](src/legacy.cjs) shows a CommonJS export with a deprecation note.
+Open `examples/fulfillment/dist/wiki/index.md` for the standalone wiki or `examples/dist/wiki/index.md` for the combined examples wiki. The combined wiki includes the app through `examples/realdocs.json` and uses the inputs from `examples/fulfillment/realdocs.json`.
+
+The app config includes the `realdocs.json` files in `src/catalog`, `src/delivery`, `src/integrations`, and `src/operations`. Each component lists its own source entries. Build from the Fulfillment folder to include shared guides and resolve references between components.
+
+The wiki includes this guide and the standalone [architecture guide](docs/architecture.md). The [shipment page](src/fulfillment.ts) links to inventory, shipping, and contract pages. The [public API page](src/index.ts) includes the `WarehouseInventory` re-export and both `inspectStock` overloads. The [legacy page](src/legacy.cjs) shows a CommonJS export with a deprecation note.
 
 Each source file starts with a JSDoc `@realdocs:file` comment. Its description appears under the title of that file's wiki page. Start the description on the `@realdocs:file` line and use separate JSDoc comments for individual exports.
 
@@ -31,10 +36,11 @@ To explore the wider graph, start with [First shipment](docs/quickstart.md) and 
 ## Generate HTML
 
 ```sh
-npm --prefix examples/fulfillment run docs -- build --format html --out dist/wiki-html
+(cd examples/fulfillment && node ../../dist/cli.js build --strict --graph --format html --out dist/wiki-html)
+(cd examples && node ../dist/cli.js build --strict --graph --format html --out dist/wiki-html)
 ```
 
-Open `dist/wiki-html/index.html` in a browser. The [shipment page](src/fulfillment.ts#shipment-workflow) renders the flowchart using the bundled Mermaid script. Use `watch` with the same flags to regenerate the HTML as you edit.
+Open `examples/fulfillment/dist/wiki-html/index.html` for the standalone wiki or `examples/dist/wiki-html/index.html` for the combined wiki. The [shipment page](src/fulfillment.ts#shipment-workflow) renders the flowchart using the bundled Mermaid script.
 
 ## Try a live edit
 
@@ -51,5 +57,5 @@ npm --prefix examples/fulfillment run docs -- watch
 To run a one-off check with the same entry points and strict validation:
 
 ```sh
-npm --prefix examples/fulfillment run docs -- check
+(cd examples/fulfillment && node ../../dist/cli.js check --strict)
 ```

@@ -1,0 +1,8 @@
+{
+  "sections": {
+    "operations": {
+      "title": "Warehouse operations",
+      "entries": ["availability.ts", "cancellation.ts"]
+    }
+  }
+}

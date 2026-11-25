@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
@@ -288,6 +288,141 @@ test('uses the root compiler config for sections without a project override', t 
     'services/api.ts': "export { value } from '#value';",
   });
   assert.match(project.run('check', '--strict'), /Checked 1 module\(s\)/);
+});
+
+test('builds one repo-wide wiki and standalone wikis from the same app configs', t => {
+  const project = fixture(t, {
+    'package.json': '{"name":"platform","type":"module"}',
+    'realdocs.json': JSON.stringify({
+      pages: ['ARCHITECTURE.md'],
+      sections: {
+        orders: { title: 'Orders API', config: 'apps/orders/realdocs.json' },
+        billing: { title: 'Billing API', config: 'apps/billing/realdocs.json' },
+      },
+    }),
+    'ARCHITECTURE.md': '# Platform architecture\n\n[Orders](apps/orders/README.md) · [Billing](apps/billing/src/index.ts#billing)',
+  });
+  for (const app of ['orders', 'billing']) {
+    const dir = `apps/${app}`;
+    const compiler = app === 'orders' ? 'tsconfig.json' : 'tsconfig.app.json';
+    project.write(`${dir}/package.json`, JSON.stringify({ name: app, type: 'module' }));
+    project.write(`${dir}/realdocs.json`, JSON.stringify({
+      pages: ['README.md'],
+      sections: { api: { entries: ['src/index.ts'], pages: ['docs/runbook.md'],
+        ...(app === 'billing' && { project: compiler }) } },
+    }));
+    project.write(`${dir}/${compiler}`, '{"compilerOptions":{"module":"NodeNext","paths":{"#local":["./src/value.ts"]}}}');
+    project.write(`${dir}/src/index.ts`, `export { value as ${app} } from '#local';`);
+    project.write(`${dir}/src/value.ts`, 'export const value = 1;');
+    project.write(`${dir}/README.md`, `# ${app} guide\n\n[API](src/index.ts#${app})`);
+    project.write(`${dir}/docs/runbook.md`, `# ${app} runbook`);
+  }
+
+  assert.match(project.run('check', '--strict'), /Checked 2 module\(s\) and 5 Markdown page\(s\)/);
+  project.run('build', '--strict', '--format', 'html');
+  const wiki = 'dist/realdocs';
+  const home = project.read(`${wiki}/index.html`);
+  const architecture = project.read(`${wiki}/pages/ARCHITECTURE.html`);
+  assert.match(architecture, /href="apps\/orders\/README\.html"/);
+  assert.match(architecture, /href="\.\.\/modules\/apps\/billing\/src\/index\.ts\.html#symbol-billing"/);
+
+  for (const app of ['orders', 'billing']) {
+    assert.ok(home.includes(`href="sections/${app}/index.html"`));
+    const section = project.read(`${wiki}/sections/${app}/index.html`);
+    assert.ok(section.includes(`../../modules/apps/${app}/src/index.ts.html`));
+    assert.ok(section.includes(`../../pages/apps/${app}/README.html`));
+    assert.ok(section.includes(`../../pages/apps/${app}/docs/runbook.html`));
+
+    const cwd = join(project.cwd, 'apps', app);
+    execFileSync(process.execPath, [cli, 'build', '--strict'], { cwd, stdio: 'pipe' });
+    const appWiki = `apps/${app}/${wiki}`;
+    const appHome = project.read(`${appWiki}/index.md`);
+    assert.ok(appHome.startsWith(`# ${app}\n`));
+    assert.match(appHome, /\[api\]\(sections\/api\/index\.md\)/);
+    assert.match(project.read(`${appWiki}/pages/README.md`), /\.\.\/modules\/src\/index\.ts\.md#symbol-/);
+    assert.equal(existsSync(join(project.cwd, appWiki, 'pages/ARCHITECTURE.md')), false);
+  }
+});
+
+test('reports invalid app config includes with the declaring config path', t => {
+  const project = fixture(t, {
+    'realdocs.json': '{"sections":{"app":{"config":"apps/example/realdocs.json"}}}',
+  });
+
+  assert.match(project.result('check').stderr, /Could not read apps\/example\/realdocs\.json/);
+  project.write('apps/example/realdocs.json', '{"pages":["../../README.md"]}');
+  assert.match(project.result('check').stderr, /apps\/example\/realdocs\.json: pages.*inside the config directory/);
+  project.write('apps/example/realdocs.json', '{"sections":{"loop":{"config":"realdocs.json"}}}');
+  assert.match(project.result('check').stderr, /Circular config include.*apps\/example\/realdocs\.json/);
+  project.write('realdocs.json', '{"sections":{"app":{"config":"apps/example/realdocs.json","entries":[]}}}');
+  assert.match(project.result('check').stderr, /sections\.app\.config cannot be combined with entries, pages, or project/);
+});
+
+test('keeps standalone compiler contexts for included apps without compiler configs', t => {
+  const ordersEntry = 'apps/orders/src/index.ts';
+  const project = fixture(t, {
+    'realdocs.json': JSON.stringify({ sections: {
+      repo: { entries: ['src/globals.ts', ordersEntry] },
+      billing: { config: 'apps/billing/realdocs.json' },
+      orders: { config: 'apps/orders/realdocs.json' },
+    } }),
+    'src/globals.ts': 'export {}; declare global { interface Window { identity: "repo" } }',
+  });
+  for (const app of ['billing', 'orders']) {
+    project.write(`apps/${app}/realdocs.json`, '{"sections":{"api":{"entries":["src/index.ts"]}}}');
+    project.write(`apps/${app}/src/index.ts`, `declare global { interface Window { identity: "${app}" } }\nexport function appIdentity() { return window.identity; }`);
+  }
+
+  project.run('build', '--strict');
+  assert.match(project.read(`dist/realdocs/modules/${ordersEntry}.md`), /appIdentity\(\): "orders"/);
+  assert.match(project.read('dist/realdocs/modules/apps/billing/src/index.ts.md'), /appIdentity\(\): "billing"/);
+});
+
+test('tracks included app configs in repo-wide diffs and release manifests', t => {
+  const config = '{"pages":["README.md"]}';
+  const appConfig = 'apps/orders/realdocs.json';
+  const project = fixture(t, {
+    '.gitignore': 'dist/\n',
+    'realdocs.json': '{"sections":{"platform":{"config":"apps/realdocs.json"}}}',
+    'apps/realdocs.json': '{"sections":{"orders":{"config":"orders/realdocs.json"}}}',
+    [appConfig]: config,
+    'apps/orders/README.md': '# Orders guide',
+  });
+  const git = (...args) => execFileSync('git', args, { cwd: project.cwd, stdio: 'pipe' });
+  git('init', '-q');
+  git('add', '.');
+  git('-c', 'user.name=RealDocs Test', '-c', 'user.email=realdocs@example.invalid', '-c', 'commit.gpgsign=false', 'commit', '-qm', 'Base');
+
+  project.run('build', '--version', '1.0.0');
+  const { sources } = JSON.parse(project.read('dist/realdocs-releases/1.0.0/release.json'));
+  for (const file of ['realdocs.json', 'apps/realdocs.json', appConfig]) assert.match(sources[file], /^[a-f0-9]{64}$/);
+
+  project.write(appConfig, `${config}\n`);
+  const { affected } = JSON.parse(project.run('diff', '--base', 'HEAD', '--json'));
+  assert.deepEqual(affected, [{
+    input: 'apps/orders/README.md', page: 'pages/apps/orders/README.md', reasons: [appConfig],
+  }]);
+});
+
+test('reports changes to the target of a symlinked app config', { skip: process.platform === 'win32' }, t => {
+  const config = '{"pages":["README.md"]}';
+  const target = 'apps/orders/wiki.json';
+  const project = fixture(t, {
+    'realdocs.json': '{"sections":{"orders":{"config":"apps/orders/realdocs.json"}}}',
+    [target]: config,
+    'apps/orders/README.md': '# Orders guide',
+  });
+  symlinkSync('wiki.json', join(project.cwd, 'apps/orders/realdocs.json'));
+  const git = (...args) => execFileSync('git', args, { cwd: project.cwd, stdio: 'pipe' });
+  git('init', '-q');
+  git('add', '.');
+  git('-c', 'user.name=RealDocs Test', '-c', 'user.email=realdocs@example.invalid', '-c', 'commit.gpgsign=false', 'commit', '-qm', 'Base');
+
+  project.write(target, `${config}\n`);
+  const { affected } = JSON.parse(project.run('diff', '--base', 'HEAD', '--json'));
+  assert.deepEqual(affected, [{
+    input: 'apps/orders/README.md', page: 'pages/apps/orders/README.md', reasons: [target],
+  }]);
 });
 
 test('generates a NestJS monorepo wiki from discovered apps and a shared library', t => {
