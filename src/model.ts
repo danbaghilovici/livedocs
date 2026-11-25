@@ -55,11 +55,19 @@ export interface DocumentedModule {
   symbols: DocumentedSymbol[];
 }
 
+export interface DocumentationSection {
+  id: string;
+  title: string;
+  entries: string[];
+  pages: string[];
+}
+
 export interface Documentation {
   modules: DocumentedModule[];
   pages?: AuthoredPage[];
   diagnostics: Diagnostic[];
   fileGraph?: FileGraph;
+  navigation?: { title: string; pages: string[]; sections: DocumentationSection[] };
 }
 
 export type FileRelation = 'import' | 're-export' | 'type-only' | 'doc-link' | 'declared';

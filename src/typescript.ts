@@ -1,5 +1,5 @@
 import { isBuiltin } from 'node:module';
-import { resolve } from 'node:path';
+import { dirname, isAbsolute, resolve } from 'node:path';
 import ts from 'typescript';
 import { normalizeTagLabels, type Diagnostic, type DocPart, type DocTag, type Documentation, type FileGraph, type FileRelation, type MarkdownContent, type SourceLocation } from './model.js';
 import { compilerDiagnostic, projectPath, sourceLocation, type Project } from './project.js';
@@ -324,21 +324,26 @@ function extractFileGraph(program: ts.Program, project: Project, checker: ts.Typ
   return graph;
 }
 
-export function extractDocumentation(program: ts.Program, project: Project, withGraph = false): Documentation {
-  const diagnostics = [
+interface Compilation {
+  program: ts.Program;
+  project: Project;
+}
+
+function indexExports({ program, project }: Compilation, entries: readonly string[],
+  lookup: Map<string, string>, primary: Set<string>, diagnostics: Diagnostic[]) {
+  const issues = [
     ...program.getConfigFileParsingDiagnostics(),
     ...program.getOptionsDiagnostics(),
     ...program.getSyntacticDiagnostics(),
   ].map(item => compilerDiagnostic(project.directory, item));
-  if (diagnostics.some(item => item.level === 'error')) return { modules: [], diagnostics };
+  diagnostics.push(...issues);
+  if (issues.some(item => item.level === 'error')) return;
 
   const checker = program.getTypeChecker();
   diagnostics.push(...unresolvedModules(program, checker, project));
-  const lookup = new Map<string, string>();
-  const primary = new Set<string>();
   const exportsByFile = new Map<ts.SourceFile, Export[]>();
 
-  for (const entry of project.entries) {
+  for (const entry of entries) {
     const file = program.getSourceFile(entry);
     if (!file) {
       diagnostics.push({ level: 'error', message: `Could not read entry file ${projectPath(project.directory, entry)}.` });
@@ -380,7 +385,12 @@ export function extractDocumentation(program: ts.Program, project: Project, with
     }
   }
 
-  const modules = [...exportsByFile].map(([file, entries]) => ({
+  return { checker, exportsByFile };
+}
+
+function describeExports({ project }: Compilation, { checker, exportsByFile }: NonNullable<ReturnType<typeof indexExports>>,
+  lookup: ReadonlyMap<string, string>, diagnostics: Diagnostic[]): Documentation['modules'] {
+  return [...exportsByFile].map(([file, entries]) => ({
     name: projectPath(project.directory, file.fileName),
     language: /\.[cm]?jsx?$/i.test(file.fileName) ? 'javascript' : 'typescript',
     overview: fileOverview(file),
@@ -409,5 +419,45 @@ export function extractDocumentation(program: ts.Program, project: Project, with
       };
     }),
   }));
-  return { modules, diagnostics, fileGraph: withGraph ? extractFileGraph(program, project, checker, modules) : undefined };
+}
+
+export function extractDocumentations(compilations: Compilation[], withGraph = false): Documentation {
+  const diagnostics: Diagnostic[] = [];
+  const lookup = new Map<string, string>();
+  const primary = new Set<string>();
+  // Prefer the closest compiler config when the same source file belongs to more than one section.
+  const owners = new Map<string, { compilation: Compilation; depth: number }>();
+  for (const compilation of compilations) {
+    const config = compilation.project.config;
+    for (const entry of compilation.project.entries) {
+      const parent = config ? dirname(config) : compilation.project.directory;
+      const relative = projectPath(parent, entry);
+      const depth = relative.startsWith('../') || relative === '..' || isAbsolute(relative) ? 0 : parent.length;
+      if ((owners.get(entry)?.depth ?? -1) < depth) owners.set(entry, { compilation, depth });
+    }
+  }
+  const indexed = compilations.flatMap(compilation => {
+    const entries = compilation.project.entries.filter(entry => owners.get(entry)?.compilation === compilation);
+    const exports = indexExports(compilation, entries, lookup, primary, diagnostics);
+    return exports ? [{ compilation, exports }] : [];
+  });
+  const modules = indexed.flatMap(({ compilation, exports }) => describeExports(compilation, exports, lookup, diagnostics));
+  const fileGraph: FileGraph | undefined = withGraph ? { nodes: [], edges: [] } : undefined;
+  if (fileGraph) {
+    const nodes = new Map<string, FileGraph['nodes'][number]>();
+    const edges = new Map<string, FileGraph['edges'][number]>();
+    for (const { compilation: { program, project }, exports: { checker } } of indexed) {
+      const graph = extractFileGraph(program, project, checker, modules);
+      for (const node of graph.nodes) nodes.set(node.path, node);
+      for (const edge of graph.edges) edges.set(JSON.stringify([edge.source, edge.target, edge.kind]), edge);
+    }
+    fileGraph.nodes = [...nodes.values()];
+    fileGraph.edges = [...edges.values()];
+  }
+  const uniqueDiagnostics = [...new Map(diagnostics.map(item => [JSON.stringify(item), item])).values()];
+  return { modules, diagnostics: uniqueDiagnostics, fileGraph };
+}
+
+export function extractDocumentation(program: ts.Program, project: Project, withGraph = false): Documentation {
+  return extractDocumentations([{ program, project }], withGraph);
 }

@@ -102,6 +102,7 @@ let runtime: string | undefined;
 let license: string | undefined;
 
 function htmlPage(file: string, title: string, body: string, hasDiagram: boolean, graph?: ReturnType<typeof renderHtmlGraph>): string {
+  const directory = file === 'index.html' || file.startsWith('sections/');
   const scripts = hasDiagram ? `
   <script defer src="${href(file, runtimePath)}"></script>
   <script defer src="${href(file, runnerPath)}"></script>` : '';
@@ -114,8 +115,8 @@ function htmlPage(file: string, title: string, body: string, hasDiagram: boolean
   <style>${style}</style>${scripts}${graph?.head ?? ''}
 </head>
 <body>
-<main${file === 'index.html' ? ' class="wiki-index"' : ''}>
-${file === 'index.html' ? `<div class="wiki-directory">\n${body}</div>\n${graph?.body ?? ''}` : body}</main>
+<main${directory ? ' class="wiki-index"' : ''}>
+${directory ? `<div class="wiki-directory">\n${body}</div>\n${graph?.body ?? ''}` : body}</main>
 </body>
 </html>
 `;
@@ -123,8 +124,8 @@ ${file === 'index.html' ? `<div class="wiki-directory">\n${body}</div>\n${graph?
 
 export function renderHtmlWiki(documentation: Documentation): { files: Map<string, string>; pages: number } {
   let needsMermaid = false;
-  const graph = documentation.fileGraph ? renderHtmlGraph(documentation) : undefined;
-  const files = renderWiki(documentation, 'html', (file, title, blocks) => {
+  let graphAssets: ReturnType<typeof renderHtmlGraph>['assets'] | undefined;
+  const files = renderWiki(documentation, 'html', (file, title, blocks, section) => {
     let hasDiagram = false;
     const body = blocks.map(block => {
       if (typeof block !== 'string' && 'anchor' in block) return `<div id="${escape(block.anchor)}"></div>\n`;
@@ -144,10 +145,12 @@ export function renderHtmlWiki(documentation: Documentation): { files: Map<strin
       return markdown.renderer.render(tokens, markdown.options, environment);
     }).join('');
     if (hasDiagram) needsMermaid = true;
-    return htmlPage(file, title, body, hasDiagram, file === 'index.html' ? graph : undefined);
+    const graph = documentation.fileGraph && (file === 'index.html' || section) ? renderHtmlGraph(documentation, file, section) : undefined;
+    graphAssets ??= graph?.assets;
+    return htmlPage(file, title, body, hasDiagram, graph);
   });
   const pages = files.size;
-  for (const [path, content] of graph?.assets ?? []) files.set(path, content);
+  for (const [path, content] of graphAssets ?? []) files.set(path, content);
   if (needsMermaid) {
     runtime ??= readFileSync(require.resolve('mermaid/dist/mermaid.min.js'), 'utf8');
     license ??= readFileSync(require.resolve('mermaid/LICENSE'), 'utf8');

@@ -30,6 +30,211 @@ function fixture(t, files) {
   };
 }
 
+test('init discovers projects and Markdown, and preserves an existing config', t => {
+  const project = fixture(t, {
+    'ARCHITECTURE.md': '# Architecture guide',
+    'docs/design.md': '# Design guide',
+    'eslint.config.mjs': 'export default [];',
+    'node_modules/ignored/README.md': '# Dependency',
+    'dist/old/index.md': '# Generated docs',
+    'wiki/.realdocs-manifest.json': '{}',
+    'wiki/index.md': '# Generated docs in a custom output directory',
+    'services/orders/tsconfig.app.json': '{}',
+    'services/orders/src/main.ts': "import './orders.module.js';",
+    'services/orders/src/orders.module.ts': 'export class OrdersModule {}',
+    'services/orders/docs/operations.md': '# Operations',
+    'packages/contracts/tsconfig.json': '{}',
+    'packages/contracts/src/index.ts': 'export interface Order {}',
+  });
+
+  const preview = JSON.parse(project.run('init', '--print'));
+  assert.equal(existsSync(join(project.cwd, 'realdocs.json')), false);
+  assert.deepEqual(preview.pages, ['ARCHITECTURE.md', 'docs/design.md']);
+  assert.deepEqual(Object.keys(preview.sections), ['contracts', 'orders']);
+  assert.equal(preview.sections.orders.project, 'services/orders/tsconfig.app.json');
+  assert.deepEqual(preview.sections.orders.entries, ['services/orders/src/main.ts', 'services/orders/src/orders.module.ts']);
+  assert.deepEqual(preview.sections.orders.pages, ['services/orders/docs/operations.md']);
+  assert.deepEqual(preview.sections.contracts.entries, ['packages/contracts/src/index.ts']);
+
+  project.run('init');
+  assert.deepEqual(JSON.parse(project.read('realdocs.json')), preview);
+  project.write('realdocs.json', '{"pages":["ARCHITECTURE.md"]}\n');
+  const overwrite = project.result('init');
+  assert.notEqual(overwrite.status, 0);
+  assert.match(overwrite.stderr, /realdocs\.json already exists/);
+  assert.equal(project.read('realdocs.json'), '{"pages":["ARCHITECTURE.md"]}\n');
+});
+
+test('init follows TypeScript project references without assuming a source folder name', t => {
+  const project = fixture(t, {
+    'tsconfig.json': '{"files":[],"references":[{"path":"components/search/compiler.json"}]}',
+    'components/search/compiler.json': '{"include":["implementation/**/*.ts"]}',
+    'components/search/implementation/query.ts': 'export function query() {}',
+    'components/search/implementation/query.test.ts': 'export function testQuery() {}',
+    'components/search/guide.md': '# Search guide',
+  });
+  const config = JSON.parse(project.run('init', '--print'));
+  assert.deepEqual(config.sections.search, {
+    title: 'search',
+    project: 'components/search/compiler.json',
+    entries: ['components/search/implementation/query.ts'],
+    pages: ['components/search/guide.md'],
+  });
+});
+
+test('builds section indexes with cross-project links and one page per source file', t => {
+  const settings = {
+    compilerOptions: { module: 'NodeNext', baseUrl: '../..', paths: { '#orders': ['lib/contracts/index.ts'] } },
+  };
+  const project = fixture(t, {
+    'package.json': '{"name":"orders-platform","type":"module"}',
+    'realdocs.json': JSON.stringify({
+      pages: ['ARCHITECTURE.md'],
+      sections: {
+        http: { title: 'Orders API', project: 'services/http/tsconfig.json', entries: ['services/http/index.ts', 'lib/contracts/index.ts'] },
+        contracts: { title: 'Order contracts', project: 'lib/contracts/tsconfig.json', entries: ['lib/contracts/index.ts'], pages: ['lib/contracts/README.md'] },
+        jobs: { title: 'Maintenance', project: 'jobs/tsconfig.json', entries: ['jobs/index.ts'] },
+      },
+    }),
+    'ARCHITECTURE.md': '# Architecture\n\nArchitecture-only text.\n\n[Order](lib/contracts/index.ts#Order)\n\n```mermaid\nC4Context\nSystem(orders, "Orders API", "Manages orders")\n```\n',
+    'services/http/tsconfig.json': JSON.stringify(settings),
+    'services/http/index.ts': "import type { Order } from '#orders';\n/** Receives an {@link Order}. */\nexport function accept(order: Order) {}",
+    'lib/contracts/tsconfig.json': '{"compilerOptions":{"module":"NodeNext"}}',
+    'lib/contracts/index.ts': 'export interface Order { id: number }',
+    'lib/contracts/README.md': '# Contracts guide\n\n[API](../../services/http/index.ts#accept)\n',
+    'jobs/tsconfig.json': '{"compilerOptions":{"module":"NodeNext"}}',
+    'jobs/index.ts': 'export function cleanUp() {}',
+    'notes.md': '# Added after init',
+  });
+
+  assert.match(project.run('check', '--strict'), /Checked 3 module\(s\) and 2 Markdown page\(s\)/);
+  project.run('build', '--strict', '--graph', '--out', 'wiki');
+  const root = project.read('wiki/index.md');
+  assert.match(root, /^# orders-platform/m);
+  assert.match(root, /\[Orders API\]\(sections\/http\/index\.md\)/);
+  assert.match(root, /\[Architecture\]\(pages\/ARCHITECTURE\.md\)/);
+  assert.doesNotMatch(root, /Architecture-only text|Added after init/);
+  assert.match(project.read('wiki/modules/services/http/index.ts.md'), /contracts\/index\.ts\.md#symbol-Order/);
+  assert.match(project.read('wiki/sections/contracts/index.md'), /\[Contracts guide\]\(\.\.\/\.\.\/pages\/lib\/contracts\/README\.md\)/);
+  assert.match(project.read('wiki/sections/http/index.md'), /\.\.\/\.\.\/modules\/lib\/contracts\/index\.ts\.md/);
+  assert.doesNotMatch(project.read('wiki/sections/http/index.md'), /jobs\/index\.ts/);
+
+  project.run('build', '--strict', '--graph', '--format', 'html', '--out', 'site');
+  const section = project.read('site/sections/http/index.html');
+  const graph = JSON.parse(section.match(/id="file-map-data">(.*?)<\/script>/s)[1]);
+  assert.equal(graph.nodes.find(node => node.path === 'lib/contracts/index.ts').href, '../../modules/lib/contracts/index.ts.html');
+  assert.equal(graph.nodes.some(node => node.path === 'jobs/index.ts'), false);
+  assert.match(section, /src="\.\.\/\.\.\/assets\/cytoscape\.min\.js"/);
+  assert.match(project.read('site/pages/ARCHITECTURE.html'), /C4Context/);
+});
+
+test('uses a Markdown-only config and reports invalid section paths', t => {
+  const project = fixture(t, {
+    'README.md': '# Root guide',
+    'realdocs.json': '{"pages":["README.md"]}',
+    'extra.md': '# Extra guide',
+  });
+  project.run('build', '--out', 'wiki');
+  assert.match(project.read('wiki/index.md'), /\[Root guide\]\(pages\/README\.md\)/);
+  project.run('build', '--page', 'extra.md', '--out', 'wiki');
+  assert.match(project.read('wiki/index.md'), /\[Extra guide\]\(pages\/extra\.md\)/);
+
+  project.write('realdocs.json', '{"sections":{"guide":{"pages":["../outside.md"]}}}');
+  const invalid = project.result('check');
+  assert.notEqual(invalid.status, 0);
+  assert.match(invalid.stderr, /sections\.guide\.pages.*inside the config directory/);
+});
+
+test('uses the root compiler config for sections without a project override', t => {
+  const project = fixture(t, {
+    'tsconfig.json': '{"compilerOptions":{"module":"NodeNext","paths":{"#value":["./common/value.ts"]}}}',
+    'realdocs.json': '{"sections":{"api":{"entries":["services/api.ts"]}}}',
+    'common/value.ts': 'export const value = 1;',
+    'services/api.ts': "export { value } from '#value';",
+  });
+  assert.match(project.run('check', '--strict'), /Checked 1 module\(s\)/);
+});
+
+test('generates a NestJS monorepo wiki from discovered apps and a shared library', t => {
+  const apps = {
+    'admin-api': { folder: 'admin', entry: 'bootstrap', module: 'AdminModule' },
+    'orders-api': { folder: 'orders', entry: 'main', module: 'OrdersModule' },
+    'customer-portal': { folder: 'portal', entry: 'main', module: 'PortalModule' },
+  };
+  const nestProjects = {
+    contracts: {
+      type: 'library', root: 'libs/contracts', sourceRoot: 'libs/contracts/src', entryFile: 'index',
+      compilerOptions: { tsConfigPath: 'libs/contracts/tsconfig.lib.json' },
+    },
+  };
+  const files = {
+    'package.json': '{"name":"order-platform","type":"module"}',
+    'tsconfig.json': JSON.stringify({ compilerOptions: {
+      module: 'NodeNext', experimentalDecorators: true,
+      baseUrl: '.', paths: { '@platform/contracts': ['libs/contracts/src/index.ts'] },
+    } }),
+    'libs/contracts/tsconfig.lib.json': '{"extends":"../../tsconfig.json","include":["src/**/*"]}',
+    'libs/contracts/src/index.ts': '/** Public order contract. */\nexport interface Order { id: string }',
+    'ARCHITECTURE.md': `# Order platform architecture
+
+The platform handles orders and customer requests.
+
+[Orders API module](apps/orders/src/orders.module.ts#OrdersModule)
+
+\`\`\`mermaid
+C4Container
+System_Boundary(platform, "Order platform") {
+  Container(orders, "Orders API", "NestJS", "Manages orders")
+  Container(portal, "Customer Portal", "NestJS", "Displays order status")
+}
+Rel(portal, orders, "Reads order status", "HTTP")
+\`\`\`
+`,
+    'apps/orders/README.md': '# Orders API guide\n\n[Shared order contract](../../libs/contracts/src/index.ts#Order)\n',
+  };
+  for (const [id, { folder, entry, module }] of Object.entries(apps)) {
+    const root = `apps/${folder}`;
+    const sourceRoot = `${root}/src`;
+    const tsConfigPath = `${root}/tsconfig.app.json`;
+    nestProjects[id] = { type: 'application', root, sourceRoot, entryFile: entry, compilerOptions: { tsConfigPath } };
+    files[tsConfigPath] = '{"extends":"../../tsconfig.json","include":["src/**/*"]}';
+    files[`${sourceRoot}/${entry}.ts`] = `import { ${module} } from './${folder}.module.js';\nvoid ${module};\n`;
+    files[`${sourceRoot}/${folder}.module.ts`] = `import type { Order } from '@platform/contracts';
+/** Reads an {@link Order}. */
+export class ${module} { read(id: string): Order { return { id }; } }
+`;
+  }
+  files['nest-cli.json'] = JSON.stringify({ monorepo: true, projects: nestProjects });
+  const project = fixture(t, files);
+
+  project.run('init');
+  const config = JSON.parse(project.read('realdocs.json'));
+  assert.deepEqual(Object.keys(config.sections).sort(), ['admin-api', 'contracts', 'customer-portal', 'orders-api']);
+  assert.ok(config.sections['admin-api'].entries.includes('apps/admin/src/bootstrap.ts'));
+  assert.deepEqual(config.sections['orders-api'].pages, ['apps/orders/README.md']);
+  assert.deepEqual(config.pages, ['ARCHITECTURE.md']);
+
+  project.run('check', '--strict');
+  project.run('build', '--strict', '--format', 'html', '--graph', '--out', 'wiki');
+  const home = project.read('wiki/index.html');
+  assert.match(home, /<h1>order-platform<\/h1>/);
+  assert.doesNotMatch(home, /The platform handles orders/);
+  for (const id of Object.keys(config.sections)) {
+    assert.ok(home.includes(`href="sections/${id}/index.html"`));
+    assert.match(project.read(`wiki/sections/${id}/index.html`), /id="file-map-data"/);
+  }
+  assert.match(home, /href="pages\/ARCHITECTURE\.html"/);
+  const architecture = project.read('wiki/pages/ARCHITECTURE.html');
+  assert.match(architecture, /C4Container/);
+  assert.match(architecture, /href="\.\.\/modules\/apps\/orders\/src\/orders\.module\.ts\.html#symbol-OrdersModule"/);
+  assert.match(project.read('wiki/sections/orders-api/index.html'), /href="\.\.\/\.\.\/pages\/apps\/orders\/README\.html"/);
+  for (const { folder } of Object.values(apps)) {
+    const modulePage = project.read(`wiki/modules/apps/${folder}/src/${folder}.module.ts.html`);
+    assert.match(modulePage, /href="\.\.\/\.\.\/\.\.\/libs\/contracts\/src\/index\.ts\.html#symbol-Order"/);
+  }
+  assert.match(project.read('wiki/modules/libs/contracts/src/index.ts.html'), /id="symbol-Order"/);
+});
+
 test('builds a linked wiki from JavaScript JSDoc and TypeScript exports without templates', t => {
   const project = fixture(t, {
     'tsconfig.json': JSON.stringify({

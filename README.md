@@ -27,6 +27,10 @@ Add a leading JSDoc comment such as `/** @realdocs:file Handles shipment pricing
 
 The [fulfillment example](https://github.com/danbaghilovici/realdocs/tree/main/examples/fulfillment) includes a mixed JS/TS checkout workflow, linked guides, and edits to try in watch mode.
 
+## Project configuration
+
+Run `npx realdocs init` to discover source entries and Markdown guides and save them in `realdocs.json`. Edit the config to group files into sections, then run `npx realdocs build` or `npx realdocs check`. [Configuration reference](docs/configuration.md)
+
 ## Standalone Markdown pages
 
 Repeat `--page` to include Markdown files on the wiki home. Use `--page` on its own for a wiki made entirely from Markdown.
@@ -93,6 +97,7 @@ npm --prefix examples/fulfillment run docs -- build --format html --out dist/wik
 
 | Command | Behavior |
 | --- | --- |
+| `init` | Discover source entries and Markdown guides and write `realdocs.json`. Pass `--print` to preview the config. |
 | `build` | Generate the wiki and remove pages for entry points that were dropped. |
 | `check` | Report source errors, stale JSDoc `@param` names, and unresolved `{@link}` references. |
 | `watch` | Build once, then regenerate on saved changes using TypeScript's incremental compiler. |
