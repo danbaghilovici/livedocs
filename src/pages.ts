@@ -1,8 +1,8 @@
-import { readFileSync } from 'node:fs';
-import { posix } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { posix, resolve } from 'node:path';
 import MarkdownIt from 'markdown-it';
 import { parse, postprocess, preprocess } from 'micromark';
-import { anchorFor, encodeHrefComponent, href, symbolAnchor, wikiPath, type PageExtension } from './markdown.js';
+import { anchorFor, encodeHrefComponent, explicitAnchor, href, symbolAnchor, wikiPath, type PageExtension } from './markdown.js';
 import { normalizeTagLabels, type AuthoredPage, type Diagnostic, type Documentation, type MarkdownContent } from './model.js';
 import { projectPath, type Project } from './project.js';
 
@@ -11,11 +11,44 @@ const markdown = {
   html: new MarkdownIt(),
 };
 const documentationFile = /\.(?:md|[jt]sx?|[cm][jt]s)$/i;
+// GitHub line fragments: #L12, #L12-L20, #L12C3-L20C8.
+const lineFragment = /^L(\d+)(?:C\d+)?(?:-L?\d+(?:C\d+)?)?$/;
 
 interface Destination {
   output: string;
   headings: ReadonlySet<string>;
   symbols?: ReadonlyMap<string, string>;
+  /** Anchors by the source line they start at, in ascending order, for GitHub line fragments. */
+  lines: readonly { line: number; id: string }[];
+}
+
+interface LinkSite {
+  directory: string;
+  /** The source browser URL of a project file or folder outside the wiki, when one is known. */
+  source: (path: string) => string | undefined;
+}
+
+/** Anchors written as an empty `<a id>` or `<a name>` element in raw HTML, outside code. */
+function explicitAnchors(text: string): string[] {
+  const anchors: string[] = [];
+  const pattern = new RegExp(explicitAnchor.source, 'gi');
+  for (const token of markdown.md.parse(text, {})) {
+    // Inline HTML arrives one tag per token: rejoin adjacent tags, and keep anything else between them.
+    const html = token.type === 'html_block' ? token.content
+      : token.children?.map(child => child.type === 'html_inline' ? child.content : '\0').join('') ?? '';
+    for (const match of html.matchAll(pattern)) anchors.push(match[1] ?? match[2]);
+  }
+  return anchors;
+}
+
+function lineTargets(content: MarkdownContent | undefined, symbols: readonly { line: number; id: string }[] = []) {
+  const start = content?.sourceLine ?? 1;
+  const headings = content?.headings?.map(heading => ({ line: start + heading.line, id: heading.id })) ?? [];
+  return [...headings, ...symbols].sort((a, b) => a.line - b.line);
+}
+
+function encodePath(path: string): string {
+  return path.split('/').map(encodeURIComponent).join('/');
 }
 
 function readPageAnnotations(text: string): MarkdownContent {
@@ -46,7 +79,8 @@ function headingsIn(content: MarkdownContent, extension: PageExtension, taken = 
     const text = tokens[index + 1].children?.map(part =>
       part.type === 'softbreak' || part.type === 'hardbreak' ? ' ' : part.content).join('').trim() ?? '';
     if (token.level === 0) title ||= text;
-    const slug = text.normalize('NFC').toLowerCase().replace(/[^\p{L}\p{N}\p{M}_\s-]/gu, '').trim().replace(/\s+/gu, '-') || 'section';
+    // Match GitHub: drop punctuation, then turn every space into a hyphen, so `A — B` is `a--b`.
+    const slug = text.normalize('NFC').toLowerCase().replace(/[^\p{L}\p{N}\p{M}_\s-]/gu, '').trim().replace(/\s/gu, '-') || 'section';
     let id = slug;
     for (let suffix = 1; taken.has(id); suffix++) id = `${slug}-${suffix}`;
     taken.add(id);
@@ -59,6 +93,7 @@ function resolveLink(
   raw: string,
   origin: string,
   registry: ReadonlyMap<string, Destination>,
+  site: LinkSite,
   warn: (message: string) => void,
   linked?: (path: string) => void,
 ): string | undefined {
@@ -78,11 +113,19 @@ function resolveLink(
     warn(`Invalid encoding in documentation link ${value}.`);
     return;
   }
+  const escapedQuery = query.replaceAll('&', '&amp;').replace(/[<>()[\]\\\s]/g, encodeHrefComponent);
   const destination = registry.get(target);
   if (!destination) {
+    const inside = target !== '..' && !target.startsWith('../');
+    if (!inside || !existsSync(resolve(site.directory, target))) {
+      if (documentationFile.test(target)) warn(`Documentation link ${value} points to ${target}, which does not exist.`);
+      return;
+    }
+    if (documentationFile.test(target)) linked?.(target);
+    const source = site.source(target);
+    if (source) return `${source}${escapedQuery}${hash === undefined ? '' : `#${hash.replace(/[<>()[\]\\\s]/g, encodeHrefComponent)}`}`;
     if (documentationFile.test(target)) {
-      linked?.(target);
-      warn(`Documentation link ${value} points to an input that is not included. Add it with --page or --entry.`);
+      warn(`Documentation link ${value} points to an input that is not included. Add it with --page or --entry, or set sourceUrl in realdocs.json to link to its source.`);
     }
     return;
   }
@@ -93,14 +136,16 @@ function resolveLink(
     const heading = destination.headings.has(fragment) ? fragment : undefined;
     const symbol = destination.symbols?.get(fragment);
     id = path ? symbol ?? heading : heading ?? symbol;
-    if (!id) {
+    const line = id ? undefined : lineFragment.exec(fragment)?.[1];
+    // A line fragment lands on the nearest heading or symbol at or above that line, or the top.
+    if (line) id = [...destination.lines].reverse().find(item => item.line <= Number(line))?.id;
+    else if (!id) {
       warn(`Documentation link ${value} has no matching heading or symbol in ${target}.`);
       return;
     }
   }
   const from = registry.get(origin)!.output;
   const url = path ? href(from, destination.output) || encodeHrefComponent(posix.basename(from)) : '';
-  const escapedQuery = query.replaceAll('&', '&amp;').replace(/[<>()[\]\\\s]/g, encodeHrefComponent);
   return `${url}${escapedQuery}${id ? `#${encodeURIComponent(id)}` : ''}`;
 }
 
@@ -120,6 +165,7 @@ function rebaseLinks<T extends MarkdownContent>(
   content: T,
   origin: string,
   registry: ReadonlyMap<string, Destination>,
+  site: LinkSite,
   diagnostics: Diagnostic[],
   extension: PageExtension,
   withGraph: boolean,
@@ -143,7 +189,7 @@ function rebaseLinks<T extends MarkdownContent>(
       links ??= linkedUrls(text, parser);
       if (!links.has(parser.normalizeLink(parser.utils.unescapeAll(raw)))) continue;
     }
-    const url = resolveLink(raw, origin, registry, message => {
+    const url = resolveLink(raw, origin, registry, site, message => {
       diagnostics.push({
         level: 'warning', message,
         location: { file: origin, line: (content.sourceLine ?? 1) + start.line - 1, column: start.column },
@@ -168,10 +214,13 @@ export function includePages(documentation: Documentation, project: Project, ext
     }
     for (const symbol of module.symbols) symbols.set(symbol.name, symbolAnchor(symbol));
     const overview = module.overview && headingsIn(module.overview, extension, new Set(symbols.values()));
+    const declared = module.symbols.filter(symbol => symbol.location.file === module.name)
+      .map(symbol => ({ line: symbol.location.line, id: symbolAnchor(symbol) }));
     registry.set(module.name, {
       output: wikiPath(module.name, 'modules', extension),
-      headings: new Set(overview?.headings.map(heading => heading.id)),
+      headings: new Set([...overview?.headings.map(heading => heading.id) ?? [], ...explicitAnchors(overview?.markdown ?? '')]),
       symbols,
+      lines: lineTargets(overview, declared),
     });
     return { ...module, overview };
   });
@@ -195,17 +244,31 @@ export function includePages(documentation: Documentation, project: Project, ext
     }
     const page = headingsIn(readPageAnnotations(text), extension);
     outputPaths.add(output);
-    registry.set(name, { output, headings: new Set(page.headings.map(heading => heading.id)) });
+    registry.set(name, {
+      output,
+      headings: new Set([...page.headings.map(heading => heading.id), ...explicitAnchors(page.markdown)]),
+      lines: lineTargets(page),
+    });
     pages.push({ ...page, name, title: page.title || posix.basename(name) });
   }
 
+  const { release } = documentation;
+  const site: LinkSite = {
+    directory: project.directory,
+    source: path => {
+      // A versioned wiki links tracked files at its own commit, like its symbol source links.
+      const file = release && projectPath(release.root, resolve(project.directory, path));
+      if (release?.repository && file && release.tracked.has(file)) return `${release.repository}/blob/${release.commit}/${encodePath(file)}`;
+      return project.sourceUrl && `${project.sourceUrl}/${encodePath(path)}`;
+    },
+  };
   return {
     ...documentation,
     diagnostics,
     modules: modules.map(module => ({
       ...module,
-      overview: module.overview && rebaseLinks(module.overview, module.name, registry, diagnostics, extension, !!documentation.fileGraph),
+      overview: module.overview && rebaseLinks(module.overview, module.name, registry, site, diagnostics, extension, !!documentation.fileGraph),
     })),
-    pages: pages.map(page => rebaseLinks(page, page.name, registry, diagnostics, extension, !!documentation.fileGraph)),
+    pages: pages.map(page => rebaseLinks(page, page.name, registry, site, diagnostics, extension, !!documentation.fileGraph)),
   };
 }

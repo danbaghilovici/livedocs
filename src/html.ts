@@ -2,12 +2,24 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import MarkdownIt from 'markdown-it';
 import { renderHtmlGraph } from './graph.js';
-import { href, renderWiki } from './markdown.js';
+import { explicitAnchor, href, renderWiki } from './markdown.js';
 import type { Documentation } from './model.js';
 
 const require = createRequire(import.meta.url);
 const markdown = new MarkdownIt();
 const escape = markdown.utils.escapeHtml;
+const anchorAtStart = new RegExp(`^(?:${explicitAnchor.source})`, 'i');
+
+// Raw HTML stays escaped; only an empty anchor element becomes markup, so links to it resolve.
+markdown.inline.ruler.before('html_inline', 'realdocs_anchor', (state, silent) => {
+  if (state.src.charCodeAt(state.pos) !== 0x3c) return false;
+  const match = anchorAtStart.exec(state.src.slice(state.pos));
+  if (!match) return false;
+  if (!silent) state.push('realdocs_anchor', 'a', 0).attrSet('id', match[1] ?? match[2]);
+  state.pos += match[0].length;
+  return true;
+});
+markdown.renderer.rules.realdocs_anchor = (tokens, index) => `<a id="${escape(String(tokens[index].attrGet('id') ?? ''))}"></a>`;
 
 const style = `
   :root {
@@ -64,7 +76,10 @@ const runner = `
   const style = getComputedStyle(document.documentElement);
   const color = name => style.getPropertyValue('--wiki-' + name).trim();
   mermaid.initialize({
-    startOnLoad: false, securityLevel: 'strict', theme: 'base',
+    // Mermaid 12 changed the default flowchart layout, look, and label width (to 120px, which
+    // clips single-word labels such as export names); keep the established rendering.
+    startOnLoad: false, securityLevel: 'strict', theme: 'base', layout: 'dagre', look: 'classic',
+    flowchart: { wrappingWidth: 200 },
     themeVariables: {
       darkMode: true, background: color('surface'), primaryColor: '#284137',
       primaryTextColor: color('ink'), primaryBorderColor: '#698d7e',

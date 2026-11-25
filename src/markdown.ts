@@ -11,6 +11,13 @@ type PageBlock = string | { anchor: string } | MarkdownContent;
 type PageRenderer = (file: string, title: string, blocks: readonly PageBlock[], section?: DocumentationSection) => string;
 export type PageExtension = 'md' | 'html';
 
+/**
+ * An anchor authored as an empty `<a id="…"></a>` or `<a name="…"></a>` element, the form GitHub
+ * renders. Markdown output keeps it as raw HTML and HTML output renders it as an anchor, so links to
+ * it resolve in both formats. The value is the first or second capture group.
+ */
+export const explicitAnchor = /<a\s+(?:id|name)\s*=\s*(?:"([^"<>]+)"|'([^'<>]+)')\s*><\/a>/;
+
 function anchorTag(id: string): string {
   return `<a id="${id}"></a>`;
 }

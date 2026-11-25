@@ -17,6 +17,7 @@ interface SectionConfig {
 }
 
 export interface Config {
+  sourceUrl?: string;
   pages?: string[];
   sections?: Record<string, SectionConfig>;
 }
@@ -56,6 +57,20 @@ function inputPath(directory: string, value: unknown, field: string, pattern: Re
   return path;
 }
 
+function sourceUrl(value: unknown, field: string): string | undefined {
+  if (value === undefined) return undefined;
+  let url: URL | undefined;
+  try {
+    url = typeof value === 'string' ? new URL(value) : undefined;
+  } catch {
+    // Reported below with the expected form.
+  }
+  if (!url || (url.protocol !== 'https:' && url.protocol !== 'http:') || url.search || url.hash) {
+    throw new Error(`${field} must be an http(s) URL without a query or fragment, such as https://github.com/owner/repo/blob/main.`);
+  }
+  return url.href.replace(/\/+$/, '');
+}
+
 function list(directory: string, value: unknown, field: string, pattern: RegExp): string[] {
   if (value === undefined) return [];
   if (!Array.isArray(value)) throw new Error(`${field} must be an array of file paths.`);
@@ -68,6 +83,7 @@ export function readSite(path: string, extraPages: string[]): Site {
   const configPaths = new Set<string>();
   const activeConfigs = new Map<string, string>();
   const loadedConfigs = new Map<string, ConfigNavigation>();
+  let siteSourceUrl: string | undefined;
   const sitePath = (file: string): string => projectPath(directory, file);
 
   function readConfig(configPath: string, addedPages: string[] = []): ConfigNavigation {
@@ -91,6 +107,9 @@ export function readSite(path: string, extraPages: string[]): Site {
     configPaths.add(configPath);
     configPaths.add(realPath);
     if (!input) throw new Error(`${label} must contain a JSON object.`);
+    // An included config's source URL applies when that config builds its own wiki.
+    const configSourceUrl = sourceUrl(input.sourceUrl, `${label}: sourceUrl`);
+    if (configPath === path) siteSourceUrl = configSourceUrl;
 
     const defaultConfig = defaultCompilerConfig(configDirectory);
     const pages = [...new Set([
@@ -155,6 +174,7 @@ export function readSite(path: string, extraPages: string[]): Site {
     directory,
     entries: [],
     pages: [...new Set([...pages, ...sections.flatMap(section => section.pages)])].map(page => resolve(directory, page)),
+    ...(siteSourceUrl && { sourceUrl: siteSourceUrl }),
   };
   return { project, projects, configPaths: [...configPaths], pages, sections,
     title: typeof name === 'string' && name.trim() ? name.trim() : basename(directory) || 'Project documentation' };

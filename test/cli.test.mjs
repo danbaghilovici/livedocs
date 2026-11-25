@@ -217,6 +217,27 @@ test('init follows TypeScript project references without assuming a source folde
   });
 });
 
+test('init leaves out test code, fixtures, end-to-end suites, and agent instructions', t => {
+  const project = fixture(t, {
+    'AGENTS.md': '# Agent instructions',
+    'CLAUDE.md': '# Claude instructions',
+    'services/orders/AGENTS.md': '# Nested agent instructions',
+    'services/orders/tsconfig.app.json': '{}',
+    'services/orders/src/main.ts': 'export {};',
+    'services/orders/test/README.md': '# Test notes',
+    'services/orders/e2e/tsconfig.json': '{"include":["**/*.ts"]}',
+    'services/orders/e2e/fixtures/session.ts': 'export const session = 1;',
+    'scripts/fixtures/libs/contracts/src/index.ts': 'export const fixture = 1;',
+    'scripts/tests/README.md': '# Script tests',
+    'docs/guide.md': '# Guide',
+  });
+  const config = JSON.parse(project.run('init', '--print'));
+  assert.deepEqual(config.pages, ['docs/guide.md']);
+  assert.deepEqual(Object.keys(config.sections), ['orders']);
+  assert.deepEqual(config.sections.orders.entries, ['services/orders/src/main.ts']);
+  assert.equal(config.sections.orders.pages, undefined);
+});
+
 test('builds section indexes with cross-project links and one page per source file', t => {
   const settings = {
     compilerOptions: { module: 'NodeNext', baseUrl: '../..', paths: { '#orders': ['lib/contracts/index.ts'] } },
@@ -655,6 +676,8 @@ export const prepare = () => shipment;
  *
  * <script>window.exampleMarker = 1;</script>
  *
+ * <a id="unsafe" onmouseover="example()"></a> <a id="safe"></a>
+ *
  * [Unsafe page](javascript:example())
  */
 /** A shipment record. */
@@ -679,11 +702,14 @@ export const shipment = { ready: true };
   assert.match(main, /class="language-mermaid">flowchart TD\n  Order --&gt; Shipment/);
   assert.match(main, /src="\.\.\/\.\.\/assets\/mermaid\.min\.js"/);
   assert.ok(statSync(join(project.cwd, 'wiki/assets/mermaid.min.js')).size > 0);
+  assert.match(project.read('wiki/assets/render-mermaid.js'), /layout: 'dagre', look: 'classic',\s+flowchart: \{ wrappingWidth: 200 \}/);
 
   const shipping = project.read('wiki/modules/src/shipping.ts.html');
   assert.match(shipping, /id="symbol-shipment"/);
   assert.match(shipping, /&lt;script&gt;window\.exampleMarker/);
-  assert.doesNotMatch(shipping, /<script|href="javascript:/);
+  assert.doesNotMatch(shipping, /<script|href="javascript:|onmouseover="/);
+  assert.match(shipping, /&lt;a id=&quot;unsafe&quot; onmouseover=/);
+  assert.match(shipping, /<a id="safe"><\/a>/);
 
   project.run('build', ...args, '--format', 'markdown');
   assert.equal(existsSync(join(project.cwd, 'wiki/index.html')), false);
@@ -953,6 +979,116 @@ test('checks links in Markdown-only projects and reports missing targets at the 
   assert.match(project.read('wiki/pages/README.md'), /\[Linked guide\]\(other\.md\)/);
 });
 
+test('resolves GitHub heading slugs, explicit anchors, and line fragments in both formats', t => {
+  const project = fixture(t, {
+    'README.md': `# Guide
+
+[Appendix](#8-appendix--source-notes) · [Phases](#deploy-phases) · [Body](guide.md#L9) · [Intro](guide.md#L4-L5)
+[Top](guide.md#L1C2) · [Export](src/index.ts#L4)
+
+<a id="deploy-phases"></a>
+Deploy phases.
+
+## 8. Appendix — source notes
+`,
+    'guide.md': `<!-- @realdocs:tag guides -->
+
+# Guide
+
+Intro.
+
+## Second
+
+Body.
+`,
+    'src/index.ts': '/** First. */\nexport const first = 1;\n/** Second. */\nexport function second() {}\n',
+  });
+  const args = ['--entry', 'src/index.ts', '--page', 'README.md', '--page', 'guide.md', '--strict'];
+  project.run('build', ...args, '--out', 'wiki');
+  const markdown = project.read('wiki/pages/README.md');
+  assert.match(markdown, /<a id="8-appendix--source-notes"><\/a>/);
+  assert.match(markdown, /\[Appendix\]\(#8-appendix--source-notes\)/);
+  assert.match(markdown, /\[Phases\]\(#deploy-phases\)/);
+  assert.match(markdown, /^<a id="deploy-phases"><\/a>$/m);
+  assert.match(markdown, /\[Body\]\(guide\.md#second\)/);
+  assert.match(markdown, /\[Intro\]\(guide\.md#guide\)/);
+  assert.match(markdown, /\[Top\]\(guide\.md\)/);
+  assert.match(markdown, /\[Export\]\(\.\.\/modules\/src\/index\.ts\.md#symbol-second\)/);
+
+  project.run('build', ...args, '--out', 'site', '--format', 'html');
+  const html = project.read('site/pages/README.html');
+  assert.match(html, /<h2 id="8-appendix--source-notes">/);
+  assert.match(html, /<a id="deploy-phases"><\/a>/);
+  assert.doesNotMatch(html, /&lt;a id=/);
+  assert.match(html, /href="guide\.html#second"/);
+
+  project.write('README.md', '# Guide\n\n[Code](#in-code)\n\n```html\n<a id="in-code"></a>\n```\n\n`<a id="in-span"></a>` [Span](#in-span)\n');
+  const code = project.result('check', '--page', 'README.md', '--strict');
+  assert.equal(code.status, 1);
+  assert.match(code.stderr, /#in-code has no matching heading/);
+  assert.match(code.stderr, /#in-span has no matching heading/);
+});
+
+test('separates missing link targets from files outside the wiki, and links those to their source', t => {
+  const project = fixture(t, {
+    'README.md': `# Guide
+
+[Missing](src/missing.ts) · [Helper](src/helper.ts#L2) · [Script](scripts/setup.sh) · [Folder](scripts/)
+[Outside](../elsewhere.md)
+`,
+    'realdocs.json': '{"pages":["README.md"]}',
+    'src/helper.ts': 'export const one = 1;\nexport const two = 2;\n',
+    'scripts/setup.sh': 'echo setup\n',
+  });
+  const unconfigured = project.result('check', '--strict');
+  assert.equal(unconfigured.status, 1);
+  assert.match(unconfigured.stderr, /README\.md:3:\d+: warning: Documentation link src\/missing\.ts points to src\/missing\.ts, which does not exist\./);
+  assert.match(unconfigured.stderr, /src\/helper\.ts#L2 points to an input that is not included\..*sourceUrl/);
+  assert.match(unconfigured.stderr, /\.\.\/elsewhere\.md points to \.\.\/elsewhere\.md, which does not exist/);
+  assert.doesNotMatch(unconfigured.stderr, /setup\.sh|scripts\//);
+
+  project.write('realdocs.json', '{"sourceUrl":"https://example.com/repo/blob/main/","pages":["README.md"]}');
+  const configured = project.result('check', '--strict');
+  assert.equal(configured.status, 1);
+  assert.match(configured.stderr, /src\/missing\.ts, which does not exist/);
+  assert.doesNotMatch(configured.stderr, /not included/);
+
+  project.write('README.md', '# Guide\n\n[Helper](src/helper.ts#L2) · [Script](scripts/setup.sh?raw=1) · [Folder](scripts/) · [Spaced](notes/a%20b.md)\n');
+  project.write('notes/a b.md', '# Notes');
+  project.run('build', '--strict', '--out', 'wiki');
+  const markdown = project.read('wiki/pages/README.md');
+  assert.match(markdown, /\[Helper\]\(https:\/\/example\.com\/repo\/blob\/main\/src\/helper\.ts#L2\)/);
+  assert.match(markdown, /\[Script\]\(https:\/\/example\.com\/repo\/blob\/main\/scripts\/setup\.sh\?raw=1\)/);
+  assert.match(markdown, /\[Folder\]\(https:\/\/example\.com\/repo\/blob\/main\/scripts\/\)/);
+  assert.match(markdown, /\[Spaced\]\(https:\/\/example\.com\/repo\/blob\/main\/notes\/a%20b\.md\)/);
+
+  for (const value of ['"github.com/repo"', '"ftp://example.com/repo"', '"https://example.com/repo#main"', '42']) {
+    project.write('realdocs.json', `{"sourceUrl":${value},"pages":["README.md"]}`);
+    assert.match(project.result('check').stderr, /realdocs\.json: sourceUrl must be an http\(s\) URL/);
+  }
+});
+
+test('links files outside a versioned wiki at the release commit', t => {
+  const project = fixture(t, {
+    '.gitignore': 'dist/\n',
+    'README.md': '# Guide\n\n[Script](scripts/setup.sh#L1)\n',
+    'realdocs.json': '{"sourceUrl":"https://example.com/repo/blob/main","pages":["README.md"]}',
+    'scripts/setup.sh': 'echo setup\n',
+  });
+  const git = (...args) => execFileSync('git', args, { cwd: project.cwd, encoding: 'utf8', stdio: 'pipe' });
+  git('init', '-q');
+  git('remote', 'add', 'origin', 'https://github.com/example/project.git');
+  git('add', '.');
+  git('-c', 'user.name=RealDocs Test', '-c', 'user.email=realdocs@example.invalid', '-c', 'commit.gpgsign=false', 'commit', '-qm', 'Source');
+  const commit = git('rev-parse', 'HEAD').trim();
+
+  project.run('build', '--out', 'latest');
+  assert.match(project.read('latest/pages/README.md'), /\(https:\/\/example\.com\/repo\/blob\/main\/scripts\/setup\.sh#L1\)/);
+  project.run('build', '--version', '1.0.0');
+  assert.match(project.read('dist/realdocs-releases/1.0.0/pages/README.md'),
+    new RegExp(`\\(https://github\\.com/example/project/blob/${commit}/scripts/setup\\.sh#L1\\)`));
+});
+
 test('watch updates a standalone page and recovers after it is restored', { timeout: 15_000 }, async t => {
   const project = fixture(t, { 'README.md': '# Guide\n\nOriginal guide.\n' });
   const child = spawn(process.execPath, [cli, 'watch', '--page', 'README.md', '--out', 'wiki', '--format', 'html'], {
@@ -987,6 +1123,18 @@ test('watch updates a standalone page and recovers after it is restored', { time
     child.kill();
     await exited;
   }
+});
+
+test('reads compiler configs that use options the bundled TypeScript deprecates', t => {
+  const project = fixture(t, {
+    'tsconfig.json': '{"compilerOptions":{"module":"commonjs","strict":true}}',
+    'runner/tsconfig.json': '{"compilerOptions":{"module":"commonjs","moduleResolution":"node","ignoreDeprecations":"5.0"}}',
+    'src/value.ts': 'export const value = 1;',
+    'src/index.ts': "import { value } from './value';\n/** The value. */\nexport const doubled = value * 2;",
+    'runner/index.ts': "export { value } from '../src/value';",
+  });
+  assert.match(project.run('check', '--entry', 'src/index.ts', '--strict'), /Checked 1 module\(s\)/);
+  assert.match(project.run('check', '--entry', 'runner/index.ts', '--project', 'runner/tsconfig.json', '--strict'), /Checked 1 module\(s\)/);
 });
 
 test('resolves untyped JS dependencies but rejects missing named imports', t => {

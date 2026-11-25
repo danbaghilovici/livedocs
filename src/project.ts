@@ -9,6 +9,8 @@ export interface Project {
   entries: string[];
   pages: string[];
   config?: string;
+  /** Base URL of the project directory in a source browser, for links to files outside the wiki. */
+  sourceUrl?: string;
 }
 
 export const standaloneOptions: ts.CompilerOptions = {
@@ -63,10 +65,18 @@ export function projectFromArguments(cwd: string, entries: string[], configPath?
   };
 }
 
+/**
+ * The deprecation level of the bundled compiler, such as `6.0`. RealDocs reads a project's
+ * compiler config with its own TypeScript, which can be a major version ahead of the one the
+ * project builds with. Options that compiler deprecates (`baseUrl`, the `node10` resolution that
+ * `module: commonjs` implies) still resolve modules, so their deprecation errors are not the
+ * project's to fix, and the project cannot acknowledge them itself: its own compiler rejects an
+ * `ignoreDeprecations` value newer than it knows.
+ */
+const deprecationLevel = `${ts.versionMajorMinor.split('.')[0]}.0`;
+
 function compilerOptions(options: ts.CompilerOptions): ts.CompilerOptions {
-  // TypeScript 6 can still resolve legacy baseUrl aliases once the deprecation is acknowledged.
-  const ignoreDeprecations = options.ignoreDeprecations ?? (options.baseUrl && ts.versionMajorMinor.startsWith('6.') ? '6.0' : undefined);
-  return { ...options, ignoreDeprecations, allowJs: options.allowJs ?? true, noEmit: true };
+  return { ...options, ignoreDeprecations: deprecationLevel, allowJs: options.allowJs ?? true, noEmit: true };
 }
 
 function rootNames(project: Project, configured: readonly string[] = []): string[] {
