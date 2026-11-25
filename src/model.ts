@@ -62,11 +62,21 @@ export interface DocumentationSection {
   pages: string[];
 }
 
+export interface Release {
+  version: string;
+  commit: string;
+  repository?: string;
+  directory: string;
+  root: string;
+  tracked: ReadonlySet<string>;
+}
+
 export interface Documentation {
   modules: DocumentedModule[];
   pages?: AuthoredPage[];
   diagnostics: Diagnostic[];
   fileGraph?: FileGraph;
+  release?: Release;
   navigation?: { title: string; pages: string[]; sections: DocumentationSection[] };
 }
 

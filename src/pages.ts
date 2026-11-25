@@ -80,9 +80,13 @@ function resolveLink(
   }
   const destination = registry.get(target);
   if (!destination) {
-    if (documentationFile.test(target)) warn(`Documentation link ${value} points to an input that is not included. Add it with --page or --entry.`);
+    if (documentationFile.test(target)) {
+      linked?.(target);
+      warn(`Documentation link ${value} points to an input that is not included. Add it with --page or --entry.`);
+    }
     return;
   }
+  linked?.(target);
 
   let id: string | undefined;
   if (fragment) {
@@ -95,7 +99,6 @@ function resolveLink(
     }
   }
   const from = registry.get(origin)!.output;
-  linked?.(target);
   const url = path ? href(from, destination.output) || encodeHrefComponent(posix.basename(from)) : '';
   const escapedQuery = query.replaceAll('&', '&amp;').replace(/[<>()[\]\\\s]/g, encodeHrefComponent);
   return `${url}${escapedQuery}${id ? `#${encodeURIComponent(id)}` : ''}`;

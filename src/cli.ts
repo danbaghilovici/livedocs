@@ -9,23 +9,27 @@ import { compileDiagrams } from './diagrams.js';
 import { renderMarkdownGraph } from './graph.js';
 import { renderWiki, type PageExtension } from './markdown.js';
 import type { Diagnostic, Documentation } from './model.js';
-import { writeWiki } from './output.js';
+import { releaseManifestName, writeWiki } from './output.js';
 import { createProgram, projectFromArguments, watchProject, type Project } from './project.js';
 import { extractDocumentation, extractDocumentations } from './typescript.js';
 
 const defaultOutput = 'dist/realdocs';
 
-const help = `Usage: realdocs <build|check|watch> [--entry <file>] [--page <file>] [options]
+const help = `Usage: realdocs <build|check|diff|watch> [--entry <file>] [--page <file>] [options]
        realdocs init [--print]
 
   init              Discover source entries and guides and write realdocs.json.
   build             Generate the documentation wiki.
   check             Validate source, JSDoc references, and wiki links.
+  diff              Report documentation affected by changes since a Git revision.
   watch             Regenerate the wiki as input files change.
 
   --entry <file>    JS/TS entry point. Repeat for more than one.
   --page <file>     Standalone Markdown page. Repeat for more than one.
   --print           Show the detected config without writing it (init only).
+  --base <ref>       Git commit, tag, or branch to compare against (required by diff).
+  --json            Emit a JSON impact report (diff only).
+  --version <name>  Build an immutable wiki pinned to the checked-out commit (build only).
   --project <file>  tsconfig.json or jsconfig.json. Defaults to the config in the current directory.
   --out <dir>       Dedicated output directory. Defaults to ${defaultOutput}.
   --format <type>   Output format, markdown (default) or html.
@@ -52,16 +56,25 @@ interface RunOptions {
   graph: boolean;
   renderHtml?: typeof import('./html.js').renderHtmlWiki;
   includePages?: typeof import('./pages.js').includePages;
+  releaseManifest?: (documentation: Documentation, files: ReadonlyMap<string, string>) => string;
   strict?: boolean;
   timings?: boolean;
 }
 
-function document(extractedCode: Documentation, project: Project, options: RunOptions, started: number): boolean {
+function prepareDocumentation(extractedCode: Documentation, project: Project, options: RunOptions): Documentation {
   const inputs = options.includePages?.(extractedCode, project, options.extension) ?? extractedCode;
-  const documentation = compileDiagrams(inputs, options.extension);
-  const extracted = performance.now();
+  return compileDiagrams(inputs, options.extension);
+}
+
+function validate(documentation: Documentation, strict?: boolean): boolean {
   for (const diagnostic of documentation.diagnostics) report(diagnostic);
-  if (documentation.diagnostics.some(item => item.level === 'error' || options.strict)) return false;
+  return !documentation.diagnostics.some(item => item.level === 'error' || strict);
+}
+
+function document(extractedCode: Documentation, project: Project, options: RunOptions, started: number): boolean {
+  const documentation = prepareDocumentation(extractedCode, project, options);
+  const extracted = performance.now();
+  if (!validate(documentation, options.strict)) return false;
 
   if (options.check) {
     const pages = documentation.pages?.length ? ` and ${documentation.pages.length} Markdown page(s)` : '';
@@ -74,6 +87,7 @@ function document(extractedCode: Documentation, project: Project, options: RunOp
   const files = html?.files ?? renderWiki(documentation, 'md', undefined,
     documentation.fileGraph ? (file, section) => renderMarkdownGraph(documentation, file, section) : undefined);
   const pages = html?.pages ?? files.size;
+  if (options.releaseManifest) files.set(releaseManifestName, options.releaseManifest(documentation, files));
   const assets = files.size - pages;
   const rendered = performance.now();
   const changed = writeWiki(options.output, files);
@@ -92,6 +106,9 @@ async function main(): Promise<void> {
       entry: { type: 'string', multiple: true },
       page: { type: 'string', multiple: true },
       print: { type: 'boolean' },
+      base: { type: 'string' },
+      json: { type: 'boolean' },
+      version: { type: 'string' },
       project: { type: 'string' },
       out: { type: 'string' },
       format: { type: 'string' },
@@ -106,8 +123,8 @@ async function main(): Promise<void> {
     return;
   }
   const [command] = positionals;
-  if (positionals.length !== 1 || !['init', 'build', 'check', 'watch'].includes(command)) {
-    throw new Error('Pass init, build, check, or watch. Run realdocs --help for usage.');
+  if (positionals.length !== 1 || !['init', 'build', 'check', 'diff', 'watch'].includes(command)) {
+    throw new Error('Pass init, build, check, diff, or watch. Run realdocs --help for usage.');
   }
   const cwd = process.cwd();
   if (command === 'init') {
@@ -117,6 +134,9 @@ async function main(): Promise<void> {
     return;
   }
   if (values.print) throw new Error('--print is only supported by realdocs init.');
+  if (command === 'diff' && !values.base) throw new Error('Use realdocs diff --base <ref>.');
+  if (command !== 'diff' && (values.base !== undefined || values.json)) throw new Error('--base and --json are only supported by realdocs diff.');
+  if (values.version !== undefined && command !== 'build') throw new Error('--version is only supported by realdocs build.');
   const format = values.format ?? 'markdown';
   if (format !== 'markdown' && format !== 'html') throw new Error(`Unknown output format ${format}. Use markdown or html.`);
 
@@ -129,13 +149,15 @@ async function main(): Promise<void> {
     throw new Error(`Provide --entry or --page inputs, or run realdocs init to create ${configName}.`);
   }
   const project = site?.project ?? projectFromArguments(cwd, values.entry ?? [], values.project, values.page);
+  const releases = values.version === undefined ? undefined : await import('./release.js');
+  const release = releases?.readRelease(project.directory, values.version!);
   const options: RunOptions = {
     check: command === 'check',
-    output: resolve(cwd, values.out ?? defaultOutput),
+    output: resolve(cwd, values.out ?? (release ? `${defaultOutput}-releases/${release.version}` : defaultOutput)),
     extension: format === 'html' ? 'html' : 'md',
-    graph: values.graph ?? false,
-    renderHtml: format === 'html' && command !== 'check' ? (await import('./html.js')).renderHtmlWiki : undefined,
-    includePages: site || project.pages.length || values.graph ? (await import('./pages.js')).includePages : undefined,
+    graph: command === 'diff' || (values.graph ?? false),
+    renderHtml: format === 'html' && (command === 'build' || command === 'watch') ? (await import('./html.js')).renderHtmlWiki : undefined,
+    includePages: site || project.pages.length || values.graph || command === 'diff' ? (await import('./pages.js')).includePages : undefined,
     strict: values.strict,
     timings: values.timings,
   };
@@ -170,11 +192,33 @@ async function main(): Promise<void> {
     return;
   }
   const started = performance.now();
+  const impact = command === 'diff' ? await import('./impact.js') : undefined;
+  const changes = impact?.changesSince(project.directory, values.base!);
+  const projects = site?.projects ?? (project.entries.length ? [project] : []);
+  const compilations = projects.map(project => ({ project, program: createProgram(project) }));
+  code = extractDocumentations(compilations, options.graph);
   if (site) {
     const { title, pages, sections } = site;
-    code = extractDocumentations(site.projects.map(project => ({ project, program: createProgram(project) })), options.graph);
     code.navigation = { title, pages, sections };
-  } else if (project.entries.length) code = extractDocumentation(createProgram(project), project, options.graph);
+  }
+  const configs = impact || release ? compilations.flatMap(({ project, program }) => {
+    const compilerConfig = program.getCompilerOptions().configFile as ts.TsConfigSourceFile | undefined;
+    return [...(project.config ? [project.config] : []), ...(compilerConfig?.extendedSourceFiles ?? [])];
+  }) : [];
+  if (impact && changes) {
+    const documentation = prepareDocumentation(code, project, options);
+    impact.reportImpact(changes, documentation, project, projects.flatMap(project => project.entries), configs, options.extension, values.json ?? false);
+    if (!validate(documentation, options.strict)) process.exitCode = 1;
+    return;
+  }
+  if (releases && release) {
+    code.release = release;
+    const sources = compilations.flatMap(({ program }) => program.getSourceFiles()
+      .filter(file => !program.isSourceFileDefaultLibrary(file) && !program.isSourceFileFromExternalLibrary(file))
+      .map(file => file.fileName));
+    const inputs = [...sources, ...configs, ...project.pages, ...(site ? [configPath] : [])];
+    options.releaseManifest = (documentation, files) => releases.releaseManifest(release, documentation, options.extension, inputs, files);
+  }
   if (!document(code, project, options, started)) process.exitCode = 1;
 }
 

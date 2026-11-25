@@ -39,30 +39,35 @@ function graphData(documentation: Documentation, extension: PageExtension, file:
   const relate = (source: string, target: string, kind: FileRelation): void => {
     if (source !== target && paths.has(source) && paths.has(target)) edges.set(JSON.stringify([source, target, kind]), { source, target, kind });
   };
-  for (const edge of graph.edges) relate(edge.source, edge.target, edge.kind);
+  for (const { source, target, kind } of fileRelationships(documentation)) relate(source, target, kind);
+  return { nodes, edges: [...edges.values()].sort((a, b) =>
+    compare(a.source, b.source) || compare(a.target, b.target) || compare(a.kind, b.kind)), relations };
+}
+
+export function fileRelationships(documentation: Documentation) {
+  const edges = [...(documentation.fileGraph?.edges ?? [])];
   const symbols = new Map(documentation.modules.flatMap(module => module.symbols.map(symbol => [symbol.id, symbol.location.file])));
   const ids = new Map(documentation.modules.flatMap(module => module.symbols.filter(symbol => symbol.docId)
     .map(symbol => [symbol.docId!, symbol.location.file])));
   for (const module of documentation.modules) {
-    for (const target of module.overview?.linkedFiles ?? []) relate(module.name, target, 'doc-link');
+    for (const target of module.overview?.linkedFiles ?? []) edges.push({ source: module.name, target, kind: 'doc-link' });
     for (const symbol of module.symbols) {
       for (const part of [...symbol.description, ...symbol.tags.flatMap(tag => tag.body)]) {
         if (part.link && 'symbol' in part.link) {
           const target = symbols.get(part.link.symbol);
-          if (target) relate(symbol.location.file, target, 'doc-link');
+          if (target) edges.push({ source: symbol.location.file, target, kind: 'doc-link' });
         }
       }
       for (const id of symbol.docUses ?? []) {
         const target = ids.get(id);
-        if (target) relate(symbol.location.file, target, 'declared');
+        if (target) edges.push({ source: symbol.location.file, target, kind: 'declared' });
       }
     }
   }
   for (const page of documentation.pages ?? []) {
-    for (const target of page.linkedFiles ?? []) relate(page.name, target, 'doc-link');
+    for (const target of page.linkedFiles ?? []) edges.push({ source: page.name, target, kind: 'doc-link' });
   }
-  return { nodes, edges: [...edges.values()].sort((a, b) =>
-    compare(a.source, b.source) || compare(a.target, b.target) || compare(a.kind, b.kind)), relations };
+  return edges;
 }
 
 function compare(left: string, right: string): number {

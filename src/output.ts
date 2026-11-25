@@ -122,6 +122,8 @@ function removeOldPages(directory: string, paths: ReadonlySet<string>, prefix = 
   }
 }
 
+export const releaseManifestName = 'release.json';
+
 export function writeWiki(directory: string, files: ReadonlyMap<string, string>): number {
   const parent = dirname(directory);
   mkdirSync(parent, { recursive: true });
@@ -137,6 +139,9 @@ export function writeWiki(directory: string, files: ReadonlyMap<string, string>)
       if (previous.has(file) && readFileSync(join(directory, file), 'utf8') === content) unchanged.add(file);
     }
     if (unchanged.size === files.size && previous.size === files.size) return 0;
+    if (previous.size && (previous.has(releaseManifestName) || files.has(releaseManifestName))) {
+      throw new Error(`Release output at ${directory} is immutable. Choose a new version or empty output directory.`);
+    }
 
     for (const [file, content] of files) {
       const target = join(next, file);

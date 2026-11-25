@@ -1,5 +1,6 @@
-import { posix } from 'node:path';
+import { posix, resolve } from 'node:path';
 import type { DocPart, DocTag, Documentation, DocumentationSection, DocumentedSymbol, MarkdownContent } from './model.js';
+import { projectPath } from './project.js';
 
 interface Address {
   file: string;
@@ -230,7 +231,14 @@ export function renderWiki(
       if (symbol.signatures.length) blocks.push(codeBlock(symbol.signatures.join('\n'), 'typescript'));
       blocks.push(docText(symbol.description, module.file, addresses));
       blocks.push(...symbol.tags.map(tag => tagText(tag, module.file, addresses, module.language)));
-      blocks.push(`Source ${codeSpan(`${symbol.location.file}:${symbol.location.line}`)}`);
+      const { file, line } = symbol.location;
+      const label = codeSpan(`${file}:${line}`);
+      const release = documentation.release;
+      const source = release && projectPath(release.root, resolve(release.directory, file));
+      if (release?.repository && source && release.tracked.has(source)) {
+        const path = source.split('/').map(encodeHrefComponent).join('/');
+        blocks.push(`Source [${label}](${release.repository}/blob/${release.commit}/${path}#L${line})`);
+      } else blocks.push(`Source ${label}`);
     }
     files.set(module.file, renderPage(module.file, module.name, blocks.filter(Boolean)));
   }
