@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, posix } from 'node:path';
 import { codeSpan, href, wikiPath, type PageExtension } from './markdown.js';
-import type { Documentation, FileRelation } from './model.js';
+import type { Documentation, DocumentationSection, FileRelation } from './model.js';
 
 const relations: Record<FileRelation, string> = {
   import: 'Imports',
@@ -12,17 +12,27 @@ const relations: Record<FileRelation, string> = {
   declared: 'Declares a dependency on',
 };
 
-function graphData(documentation: Documentation, extension: PageExtension) {
+function graphData(documentation: Documentation, extension: PageExtension, file: string, section?: DocumentationSection) {
   const graph = documentation.fileGraph!;
+  const scope = section && new Set([...section.entries, ...section.pages]);
+  if (scope) {
+    const imports = new Map<string, string[]>();
+    for (const { source, target } of graph.edges) {
+      const targets = imports.get(source) ?? [];
+      targets.push(target);
+      imports.set(source, targets);
+    }
+    for (const path of scope) for (const target of imports.get(path) ?? []) scope.add(target);
+  }
   const nodes = [
     ...graph.nodes,
     ...(documentation.pages ?? []).map(page => ({ path: page.name, zone: page.zone, kind: 'doc' as const, documented: true })),
-  ].sort((a, b) => compare(a.path, b.path)).map(node => ({
+  ].filter(node => !scope || scope.has(node.path)).sort((a, b) => compare(a.path, b.path)).map(node => ({
     path: node.path,
     label: posix.basename(node.path),
     zone: node.zone ?? (posix.dirname(node.path) === '.' ? 'Project root' : posix.dirname(node.path)),
     kind: node.kind,
-    href: node.documented ? href(`index.${extension}`, wikiPath(node.path, node.kind === 'code' ? 'modules' : 'pages', extension)) : undefined,
+    href: node.documented ? href(file, wikiPath(node.path, node.kind === 'code' ? 'modules' : 'pages', extension)) : undefined,
   }));
   const paths = new Set(nodes.map(node => node.path));
   const edges = new Map<string, typeof graph.edges[number]>();
@@ -59,8 +69,8 @@ function compare(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
-export function renderMarkdownGraph(documentation: Documentation): string {
-  const data = graphData(documentation, 'md');
+export function renderMarkdownGraph(documentation: Documentation, file: string, section?: DocumentationSection): string {
+  const data = graphData(documentation, 'md', file, section);
   const zones = new Map<string, number[]>();
   const indexes = new Map<string, number>();
   for (const [index, node] of data.nodes.entries()) {
@@ -96,8 +106,8 @@ let license: string | undefined;
 let client: string | undefined;
 let style: string | undefined;
 
-export function renderHtmlGraph(documentation: Documentation) {
-  const data = graphData(documentation, 'html');
+export function renderHtmlGraph(documentation: Documentation, file: string, section?: DocumentationSection) {
+  const data = graphData(documentation, 'html', file, section);
   const bundle = require.resolve('cytoscape/dist/cytoscape.min.js');
   cytoscape ??= readFileSync(bundle, 'utf8');
   license ??= readFileSync(join(dirname(bundle), '../LICENSE'), 'utf8');
@@ -111,9 +121,9 @@ export function renderHtmlGraph(documentation: Documentation) {
   ]);
   const json = JSON.stringify(data).replaceAll('<', '\\u003c');
   const head = `
-  <link rel="stylesheet" href="assets/file-map.css">
-  <script defer src="assets/cytoscape.min.js"></script>
-  <script defer src="assets/file-map.js"></script>`;
+  <link rel="stylesheet" href="${href(file, 'assets/file-map.css')}">
+  <script defer src="${href(file, 'assets/cytoscape.min.js')}"></script>
+  <script defer src="${href(file, 'assets/file-map.js')}"></script>`;
   const body = `<section class="file-map" aria-labelledby="file-map-title">
   <header class="map-header">
     <h2 id="file-map-title">File map</h2>

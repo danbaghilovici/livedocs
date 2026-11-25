@@ -47,9 +47,12 @@ function inputPaths(cwd: string, directory: string, names: string[], extension: 
   return paths;
 }
 
+export function defaultCompilerConfig(directory: string): string | undefined {
+  return ['tsconfig.json', 'jsconfig.json'].map(file => resolve(directory, file)).find(ts.sys.fileExists);
+}
+
 export function projectFromArguments(cwd: string, entries: string[], configPath?: string, pages: string[] = []): Project {
-  const config = configPath ? resolve(cwd, configPath)
-    : ['tsconfig.json', 'jsconfig.json'].map(file => resolve(cwd, file)).find(ts.sys.fileExists);
+  const config = configPath ? resolve(cwd, configPath) : defaultCompilerConfig(cwd);
   const directory = config ? dirname(config) : cwd;
   return {
     directory,
@@ -60,7 +63,9 @@ export function projectFromArguments(cwd: string, entries: string[], configPath?
 }
 
 function compilerOptions(options: ts.CompilerOptions): ts.CompilerOptions {
-  return { ...options, allowJs: options.allowJs ?? true, noEmit: true };
+  // TypeScript 6 can still resolve legacy baseUrl aliases once the deprecation is acknowledged.
+  const ignoreDeprecations = options.ignoreDeprecations ?? (options.baseUrl && ts.versionMajorMinor.startsWith('6.') ? '6.0' : undefined);
+  return { ...options, ignoreDeprecations, allowJs: options.allowJs ?? true, noEmit: true };
 }
 
 function rootNames(project: Project, configured: readonly string[] = []): string[] {

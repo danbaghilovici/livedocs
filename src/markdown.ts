@@ -1,5 +1,5 @@
 import { posix } from 'node:path';
-import type { DocPart, DocTag, Documentation, DocumentedSymbol, MarkdownContent } from './model.js';
+import type { DocPart, DocTag, Documentation, DocumentationSection, DocumentedSymbol, MarkdownContent } from './model.js';
 
 interface Address {
   file: string;
@@ -7,7 +7,7 @@ interface Address {
 }
 
 type PageBlock = string | { anchor: string } | MarkdownContent;
-type PageRenderer = (file: string, title: string, blocks: readonly PageBlock[]) => string;
+type PageRenderer = (file: string, title: string, blocks: readonly PageBlock[], section?: DocumentationSection) => string;
 export type PageExtension = 'md' | 'html';
 
 function anchorTag(id: string): string {
@@ -133,7 +133,7 @@ export function renderWiki(
   documentation: Documentation,
   extension: PageExtension = 'md',
   renderPage = markdownPage,
-  homeSection?: string,
+  renderGraph?: (file: string, section?: DocumentationSection) => string,
 ): Map<string, string> {
   const files = new Map<string, string>();
   const addresses = new Map<string, Address>();
@@ -163,31 +163,64 @@ export function renderWiki(
     }
   }
 
-  const title = 'Project documentation';
-  const pageLinks = pages.map(page => `- [${escapeText(page.title)}](${href(home, page.file)})`);
-  const moduleLinks = modules.map(module => `- [${codeSpan(module.name)}](${href(home, module.file)})`);
+  const navigation = documentation.navigation;
+  const title = navigation?.title ?? 'Project documentation';
+  const sections = (navigation?.sections ?? []).map(section => ({ ...section, file: `sections/${section.id}/index.${extension}` }));
+  const sectionsByFile = new Map<string, typeof sections>();
+  for (const section of sections) {
+    for (const name of [...section.entries, ...section.pages]) {
+      const owners = sectionsByFile.get(name) ?? [];
+      owners.push(section);
+      sectionsByFile.set(name, owners);
+    }
+  }
+  const sectionLinks = sections.map(section => `- [${escapeText(section.title)}](${href(home, section.file)})`);
+  const rootPages = navigation ? new Set(navigation.pages) : undefined;
+  const pageLinks = pages.filter(page => !rootPages || rootPages.has(page.name))
+    .map(page => `- [${escapeText(page.title)}](${href(home, page.file)})`);
+  const moduleLinks = navigation ? [] : modules.map(module => `- [${codeSpan(module.name)}](${href(home, module.file)})`);
   const tagNavigation = tagged.size ? `[Tags](${href(home, tagIndex)})` : '';
-  const homeBlocks = [`# ${title}`];
-  if (extension === 'html') {
-    const navigation = [tagNavigation];
-    if (documentation.fileGraph) navigation.push('[File map](#file-map-title)');
-    homeBlocks.push(navigation.filter(Boolean).join(' · '));
+  const homeBlocks = [`# ${escapeText(title)}`];
+  if (extension === 'html' || navigation) {
+    const links = [tagNavigation];
+    if (extension === 'html' && documentation.fileGraph) links.push('[File map](#file-map-title)');
+    homeBlocks.push(links.filter(Boolean).join(' · '));
+    if (sectionLinks.length) homeBlocks.push('## Sections', sectionLinks.join('\n'));
     if (pageLinks.length) homeBlocks.push('## Guides', pageLinks.join('\n'));
     if (moduleLinks.length) homeBlocks.push('## Source reference', moduleLinks.join('\n'));
   } else {
     homeBlocks.push(tagNavigation, [...pageLinks, ...moduleLinks].join('\n\n'));
   }
-  if (homeSection) homeBlocks.push(homeSection);
+  if (renderGraph) homeBlocks.push(renderGraph(home));
   files.set(home, renderPage(home, title, homeBlocks.filter(Boolean)));
 
+  for (const section of sections) {
+    const { file } = section;
+    const entries = new Set(section.entries);
+    const guides = new Set(section.pages);
+    const links = [`[Home](${href(file, home)})`];
+    if (extension === 'html' && documentation.fileGraph) links.push('[File map](#file-map-title)');
+    const blocks = [`# ${escapeText(section.title)}`, links.join(' · ')];
+    const sectionPages = pages.filter(page => guides.has(page.name));
+    if (sectionPages.length) blocks.push('## Guides', sectionPages.map(page => `- [${escapeText(page.title)}](${href(file, page.file)})`).join('\n'));
+    const sectionModules = modules.filter(module => entries.has(module.name));
+    if (sectionModules.length) blocks.push('## Source reference', sectionModules.map(module => `- [${codeSpan(module.name)}](${href(file, module.file)})`).join('\n'));
+    if (renderGraph) blocks.push(renderGraph(file, section));
+    files.set(file, renderPage(file, section.title, blocks, section));
+  }
+
+  const breadcrumbs = (name: string, file: string): string => [
+    `[Home](${href(file, home)})`,
+    ...(sectionsByFile.get(name) ?? []).map(section => `[${escapeText(section.title)}](${href(file, section.file)})`),
+  ].join(' · ');
   for (const page of pages) {
-    const blocks = [`[Home](${href(page.file, home)})`, tagLinks(page.tagLabels, page.file, tagIndex), page];
+    const blocks = [breadcrumbs(page.name, page.file), tagLinks(page.tagLabels, page.file, tagIndex), page];
     files.set(page.file, renderPage(page.file, page.title, blocks.filter(Boolean)));
   }
   for (const module of modules) {
     const blocks: PageBlock[] = [`# ${codeSpan(module.name)}`, tagLinks(module.overview?.tagLabels, module.file, tagIndex)];
     if (module.overview?.markdown) blocks.push(module.overview);
-    blocks.push(`[Home](${href(module.file, home)})`);
+    blocks.push(breadcrumbs(module.name, module.file));
     if (!module.symbols.length) blocks.push('This entry point has no exports.');
     for (const symbol of module.symbols) {
       const address = addresses.get(symbol.id)!;

@@ -1,27 +1,31 @@
 #!/usr/bin/env node
-import { watchFile } from 'node:fs';
+import { existsSync, watchFile } from 'node:fs';
 import { resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { parseArgs } from 'node:util';
 import type ts from 'typescript';
+import { configName, readSite } from './config.js';
 import { compileDiagrams } from './diagrams.js';
 import { renderMarkdownGraph } from './graph.js';
 import { renderWiki, type PageExtension } from './markdown.js';
 import type { Diagnostic, Documentation } from './model.js';
 import { writeWiki } from './output.js';
 import { createProgram, projectFromArguments, watchProject, type Project } from './project.js';
-import { extractDocumentation } from './typescript.js';
+import { extractDocumentation, extractDocumentations } from './typescript.js';
 
 const defaultOutput = 'dist/realdocs';
 
 const help = `Usage: realdocs <build|check|watch> [--entry <file>] [--page <file>] [options]
+       realdocs init [--print]
 
+  init              Discover source entries and guides and write realdocs.json.
   build             Generate the documentation wiki.
   check             Validate source, JSDoc references, and wiki links.
   watch             Regenerate the wiki as input files change.
 
   --entry <file>    JS/TS entry point. Repeat for more than one.
   --page <file>     Standalone Markdown page. Repeat for more than one.
+  --print           Show the detected config without writing it (init only).
   --project <file>  tsconfig.json or jsconfig.json. Defaults to the config in the current directory.
   --out <dir>       Dedicated output directory. Defaults to ${defaultOutput}.
   --format <type>   Output format, markdown (default) or html.
@@ -68,7 +72,7 @@ function document(extractedCode: Documentation, project: Project, options: RunOp
 
   const html = options.renderHtml?.(documentation);
   const files = html?.files ?? renderWiki(documentation, 'md', undefined,
-    documentation.fileGraph ? renderMarkdownGraph(documentation) : undefined);
+    documentation.fileGraph ? (file, section) => renderMarkdownGraph(documentation, file, section) : undefined);
   const pages = html?.pages ?? files.size;
   const assets = files.size - pages;
   const rendered = performance.now();
@@ -87,6 +91,7 @@ async function main(): Promise<void> {
     options: {
       entry: { type: 'string', multiple: true },
       page: { type: 'string', multiple: true },
+      print: { type: 'boolean' },
       project: { type: 'string' },
       out: { type: 'string' },
       format: { type: 'string' },
@@ -101,21 +106,36 @@ async function main(): Promise<void> {
     return;
   }
   const [command] = positionals;
-  if (positionals.length !== 1 || !['build', 'check', 'watch'].includes(command) || (!values.entry?.length && !values.page?.length)) {
-    throw new Error('Pass build, check, or watch and at least one --entry or --page file. Run realdocs --help for usage.');
+  if (positionals.length !== 1 || !['init', 'build', 'check', 'watch'].includes(command)) {
+    throw new Error('Pass init, build, check, or watch. Run realdocs --help for usage.');
   }
+  const cwd = process.cwd();
+  if (command === 'init') {
+    if (Object.keys(values).some(option => option !== 'print')) throw new Error('Use realdocs init [--print].');
+    const { initialize } = await import('./discovery.js');
+    initialize(cwd, values.print ?? false);
+    return;
+  }
+  if (values.print) throw new Error('--print is only supported by realdocs init.');
   const format = values.format ?? 'markdown';
   if (format !== 'markdown' && format !== 'html') throw new Error(`Unknown output format ${format}. Use markdown or html.`);
 
-  const cwd = process.cwd();
-  const project = projectFromArguments(cwd, values.entry ?? [], values.project, values.page);
+  const configPath = resolve(cwd, configName);
+  const explicit = values.entry || values.project || (command === 'watch' && values.page);
+  const hasConfig = !explicit && existsSync(configPath);
+  if (hasConfig && command === 'watch') throw new Error('Use build or check with realdocs.json. Watch requires --entry or --page inputs.');
+  const site = hasConfig ? readSite(configPath, values.page ?? []) : undefined;
+  if (!site && !values.entry?.length && !values.page?.length) {
+    throw new Error(`Provide --entry or --page inputs, or run realdocs init to create ${configName}.`);
+  }
+  const project = site?.project ?? projectFromArguments(cwd, values.entry ?? [], values.project, values.page);
   const options: RunOptions = {
     check: command === 'check',
     output: resolve(cwd, values.out ?? defaultOutput),
     extension: format === 'html' ? 'html' : 'md',
     graph: values.graph ?? false,
     renderHtml: format === 'html' && command !== 'check' ? (await import('./html.js')).renderHtmlWiki : undefined,
-    includePages: project.pages.length || values.graph ? (await import('./pages.js')).includePages : undefined,
+    includePages: site || project.pages.length || values.graph ? (await import('./pages.js')).includePages : undefined,
     strict: values.strict,
     timings: values.timings,
   };
@@ -150,7 +170,11 @@ async function main(): Promise<void> {
     return;
   }
   const started = performance.now();
-  if (project.entries.length) code = extractDocumentation(createProgram(project), project, options.graph);
+  if (site) {
+    const { title, pages, sections } = site;
+    code = extractDocumentations(site.projects.map(project => ({ project, program: createProgram(project) })), options.graph);
+    code.navigation = { title, pages, sections };
+  } else if (project.entries.length) code = extractDocumentation(createProgram(project), project, options.graph);
   if (!document(code, project, options, started)) process.exitCode = 1;
 }
 
