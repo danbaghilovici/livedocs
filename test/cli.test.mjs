@@ -30,6 +30,90 @@ function fixture(t, files) {
   };
 }
 
+test('diff reports source, Markdown, and diagram dependencies against a Git revision', t => {
+  const project = fixture(t, {
+    'realdocs.json': JSON.stringify({ pages: ['docs/architecture.md', 'docs/runbook.md', 'docs/unrelated.md'], sections: {
+      orders: { entries: ['src/orders.ts'] },
+    } }),
+    'src/orders.ts': "/** @realdocs:docId orders.create */\nexport function createOrder() {}",
+    'src/logic.ts': 'export const quantity = 1;',
+    'docs/architecture.md': '# Architecture\n\n```mermaid\nC4Component\nComponent(order, "{{ symbol(\'orders.create\').name }}", "TS", "Creates orders")\n```\n',
+    'docs/runbook.md': '# Runbook\n\n[Architecture](architecture.md)',
+    'docs/unrelated.md': '# Unrelated',
+  });
+  project.write('src/orders.ts', "import { quantity } from './logic.js';\n/** @realdocs:docId orders.create */\nexport function createOrder() { return quantity; }");
+  const git = (...args) => execFileSync('git', args, { cwd: project.cwd, encoding: 'utf8', stdio: 'pipe' });
+  git('init', '-q');
+  git('add', '.');
+  git('-c', 'user.name=RealDocs Test', '-c', 'user.email=realdocs@example.invalid', '-c', 'commit.gpgsign=false', 'commit', '-qm', 'Base');
+  const base = git('rev-parse', 'HEAD').trim();
+  project.write('src/logic.ts', 'export const quantity = 2;');
+  project.write('notes with spaces.md', '# Untracked');
+
+  const result = JSON.parse(project.run('diff', '--base', 'HEAD', '--json', '--format', 'html', '--out', 'unused'));
+  assert.equal(result.base, base);
+  assert.deepEqual(result.changes, [
+    { path: 'notes with spaces.md', status: 'added' },
+    { path: 'src/logic.ts', status: 'modified' },
+  ]);
+  assert.deepEqual(result.affected, [
+    { input: 'docs/architecture.md', page: 'pages/docs/architecture.html', reasons: ['src/logic.ts'] },
+    { input: 'docs/runbook.md', page: 'pages/docs/runbook.html', reasons: ['src/logic.ts'] },
+    { input: 'src/orders.ts', page: 'modules/src/orders.ts.html', reasons: ['src/logic.ts'] },
+  ]);
+  assert.equal(existsSync(join(project.cwd, 'unused')), false);
+
+  project.write('docs/runbook.md', '# Edited runbook');
+  git('add', 'docs/runbook.md');
+  const staged = JSON.parse(project.run('diff', '--base', 'HEAD', '--json'));
+  assert.deepEqual(staged.affected.find(page => page.input === 'docs/runbook.md')?.reasons, ['docs/runbook.md']);
+  const badBase = project.result('diff', '--base', 'missing-ref');
+  assert.notEqual(badBase.status, 0);
+  assert.match(badBase.stderr, /Could not resolve Git base/);
+  rmSync(join(project.cwd, 'docs/architecture.md'));
+  const removed = project.result('diff', '--base', 'HEAD', '--json');
+  assert.equal(removed.status, 1);
+  assert.match(removed.stderr, /Could not read Markdown page docs\/architecture\.md/);
+  assert.deepEqual(JSON.parse(removed.stdout).affected.find(page => page.input === 'docs/architecture.md')?.reasons, ['docs/architecture.md']);
+});
+
+test('builds an immutable versioned wiki pinned to the checked-out commit', t => {
+  const project = fixture(t, {
+    '.gitignore': 'dist/\n',
+    'realdocs.json': '{"sections":{"api":{"entries":["src/index.ts"]}}}',
+    'src/index.ts': '/** @realdocs:docId app.hello */\nexport function hello() { return "world"; }',
+  });
+  const git = (...args) => execFileSync('git', args, { cwd: project.cwd, encoding: 'utf8', stdio: 'pipe' });
+  const commit = message => {
+    git('add', '.');
+    git('-c', 'user.name=RealDocs Test', '-c', 'user.email=realdocs@example.invalid', '-c', 'commit.gpgsign=false', 'commit', '-qm', message);
+    return git('rev-parse', 'HEAD').trim();
+  };
+  git('init', '-q');
+  git('remote', 'add', 'origin', 'https://github.com/example/project.git');
+  const base = commit('Release source');
+  const output = 'dist/realdocs-releases/1.0.0';
+
+  project.run('build', '--version', '1.0.0');
+  const text = project.read(output + '/release.json');
+  const release = JSON.parse(text);
+  assert.equal(release.version, '1.0.0');
+  assert.equal(release.commit, base);
+  assert.equal(release.symbols[0].id, 'app.hello');
+  assert.equal(release.symbols[0].page, 'modules/src/index.ts.md#doc-app.hello');
+  assert.match(release.files['modules/src/index.ts.md'], /^[a-f0-9]{64}$/);
+  assert.match(project.read(output + '/modules/src/index.ts.md'), new RegExp('/blob/' + base + '/src/index.ts#L2'));
+  assert.match(project.run('build', '--version', '1.0.0'), /\(0 written\)/);
+
+  project.write('src/index.ts', 'export function hello() { return "later"; }');
+  assert.match(project.result('build', '--version', '2.0.0').stderr, /uncommitted/);
+  commit('Update source');
+  const conflict = project.result('build', '--version', '1.0.0');
+  assert.notEqual(conflict.status, 0);
+  assert.match(conflict.stderr, /immutable/);
+  assert.equal(project.read(output + '/release.json'), text);
+});
+
 test('init discovers projects and Markdown, and preserves an existing config', t => {
   const project = fixture(t, {
     'ARCHITECTURE.md': '# Architecture guide',

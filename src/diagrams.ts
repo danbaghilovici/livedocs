@@ -54,7 +54,7 @@ function legend(links: DiagramLink[], from: string): string[] {
   }), ''];
 }
 
-function dependencyGraph(root: string, registry: ReadonlyMap<string, DiagramSymbol>, from: string): string[] {
+function dependencyGraph(root: string, registry: ReadonlyMap<string, DiagramSymbol>, from: string, linkedFiles: Set<string>): string[] {
   const ids = [root];
   const nodes = new Map([[root, 's0']]);
   const edges: string[] = [];
@@ -69,6 +69,7 @@ function dependencyGraph(root: string, registry: ReadonlyMap<string, DiagramSymb
     }
   }
   const links = ids.map(id => ({ target: registry.get(id)! }));
+  for (const { target } of links) linkedFiles.add(target.symbol.location.file);
   return [
     '```mermaid', 'flowchart LR',
     ...links.map(({ target }, index) => `  s${index}["${mermaidLabel(target.symbol.name)}"]`),
@@ -88,6 +89,7 @@ function compileContent<T extends MarkdownContent>(
 
   const lines = content.markdown.split('\n');
   const edits: LineEdit[] = [];
+  const linkedFiles = new Set(content.linkedFiles);
   const report = (message: string, line: number, column = 0): void => {
     diagnostics.push({
       level: 'error', message,
@@ -97,6 +99,7 @@ function compileContent<T extends MarkdownContent>(
   const resolve = (id: string, line: number, column?: number): DiagramSymbol | undefined => {
     const target = registry.get(id);
     if (!target) report(`Unknown diagram symbol ${id}. Add @realdocs:docId to an included export.`, line, column);
+    else linkedFiles.add(target.symbol.location.file);
     return target;
   };
 
@@ -111,7 +114,7 @@ function compileContent<T extends MarkdownContent>(
         child.type === 'text' && child.content.includes('diagram.dependencies'))) continue;
       const match = token.level === 0 ? dependencies.exec(block) : null;
       if (!match) report('Use {{ diagram.dependencies("id") }} in its own top-level paragraph.', start);
-      else if (resolve(match[2], start)) edits.push({ start, end, lines: dependencyGraph(match[2], registry, from) });
+      else if (resolve(match[2], start)) edits.push({ start, end, lines: dependencyGraph(match[2], registry, from, linkedFiles) });
       continue;
     }
     if (token.type !== 'fence' || !/^mermaid(?:\s|$)/.test(token.info.trim()) || !directive.test(token.content)) continue;
@@ -161,7 +164,7 @@ function compileContent<T extends MarkdownContent>(
     line: heading.line + edits.reduce((offset, edit) =>
       edit.end <= heading.line ? offset + edit.lines.length - (edit.end - edit.start) : offset, 0),
   }));
-  return { ...content, markdown: result.join('\n'), headings };
+  return { ...content, markdown: result.join('\n'), headings, linkedFiles: linkedFiles.size ? [...linkedFiles] : undefined };
 }
 
 export function compileDiagrams(documentation: Documentation, extension: PageExtension): Documentation {

@@ -100,6 +100,7 @@ npm --prefix examples/fulfillment run docs -- build --format html --out dist/wik
 | `init` | Discover source entries and Markdown guides and write `realdocs.json`. Pass `--print` to preview the config. |
 | `build` | Generate the wiki and remove pages for entry points that were dropped. |
 | `check` | Report source errors, stale JSDoc `@param` names, and unresolved `{@link}` references. |
+| `diff --base <ref>` | Report which documentation pages may be affected by changes since a Git revision. |
 | `watch` | Build once, then regenerate on saved changes using TypeScript's incremental compiler. |
 
 Repeat `--entry` for each public entry point. Paths on the command line are relative to the working directory. RealDocs reads `tsconfig.json` or `jsconfig.json` from that directory when present. Use `--project` to select a config in another directory. Entry files must be inside the selected config's directory. The compiler starts with those entries and configured declaration files, then follows imports.
@@ -107,6 +108,27 @@ Repeat `--entry` for each public entry point. Paths on the command line are rela
 `check` validates syntax, static module references, and JSDoc for documented exports. Use your project's TypeScript checker for full type checking. If the selected config file is deleted while watching, restart `watch` after restoring it.
 
 The current source checkout defaults to `dist/realdocs`. Use `--out` to choose a dedicated output directory. RealDocs checks output ownership before replacing generated pages and retains the last successful wiki when a source error prevents a build. Use `--strict` to fail on documentation warnings, or `--timings` to report build phase timings.
+
+## Documentation impact
+
+Use `diff` before reviewing a change. It compares the Git revision you name with the working tree, including staged changes and untracked files that Git sees. Inputs come from `realdocs.json` or the usual `--entry` and `--page` flags.
+
+```sh
+npx realdocs diff --base origin/main
+npx realdocs diff --base HEAD --format html --json
+```
+
+The report lists affected pages and the changed files that led to them. It follows imports, code links, Markdown links, and Mermaid symbol references in the current source. Links and imports removed by the change may lose their dependency edges. A selected input that was deleted still appears in the report alongside its validation error. The JSON report goes to stdout and diagnostics go to stderr. The command writes no wiki files.
+
+## Versioned builds
+
+Check out the source commit you want to document, then build with a version label.
+
+```sh
+npx realdocs build --version 1.2.0 --format html
+```
+
+The default directory is `dist/realdocs-releases/1.2.0`. The checkout must have clean tracked files and the documentation inputs must be tracked by Git. The output includes `release.json` with the source commit, symbol routes, and SHA-256 fingerprints for inputs and outputs. A GitHub `origin` gives tracked symbols source links pinned to the commit. Identical rebuilds can reuse the same directory. Choose a new version or empty directory to write different output.
 
 ## Development
 
