@@ -6,7 +6,7 @@ RealDocs generates linked Markdown or HTML documentation from JavaScript and Typ
 
 ## Quick start
 
-Use Node.js 22 or later. Install RealDocs in the project you want to document.
+Use Node.js 22 or later. To run from source, see [Development](#development). Once an npm release is available, install it in the project you want to document.
 
 ```sh
 npm install --save-dev realdocs
@@ -23,7 +23,7 @@ Open `dist/livedocs/index.md` in a Markdown viewer. Each entry point gets a page
 
 Add a leading JSDoc comment such as `/** @livedocs:file Handles shipment pricing and transit estimates. */` to place an overview under the generated page title.
 
-The [fulfillment example](https://github.com/danbaghilovici/livedocs/tree/main/examples/fulfillment) includes a mixed JS/TS checkout workflow, linked guides, and edits to try in watch mode.
+The [fulfillment example](https://github.com/danbaghilovici/realdocs/tree/main/examples/fulfillment) includes a mixed JS/TS checkout workflow, linked guides, and edits to try in watch mode.
 
 ## Standalone Markdown pages
 

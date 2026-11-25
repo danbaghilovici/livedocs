@@ -5,7 +5,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/danbaghilovici/livedocs.git"
+    "url": "git+https://github.com/danbaghilovici/realdocs.git"
   },
   "type": "module",
   "bin": {
