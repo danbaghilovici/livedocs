@@ -30,6 +30,57 @@ function fixture(t, files) {
   };
 }
 
+test('install-skill adds both skills and preserves an existing local edit', t => {
+  const project = fixture(t, {});
+  const skillPath = '.agents/skills/realdocs-c4/SKILL.md';
+  const bootstrapPath = '.agents/skills/realdocs-bootstrap/SKILL.md';
+  const bundled = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+
+  assert.match(project.run('install-skill'), /Installed realdocs-c4/);
+  assert.equal(project.read(skillPath), bundled(skillPath));
+  assert.equal(project.read(bootstrapPath), bundled(bootstrapPath));
+  assert.match(project.run('install-skill'), /already installed/);
+
+  rmSync(join(project.cwd, bootstrapPath));
+  project.write(skillPath, '# Project-specific C4 instructions\n');
+  const conflict = project.result('install-skill');
+  assert.equal(conflict.status, 1);
+  assert.match(conflict.stderr, /differs from the bundled skill/);
+  assert.equal(project.read(skillPath), '# Project-specific C4 instructions\n');
+  assert.equal(project.read(bootstrapPath), bundled(bootstrapPath));
+  assert.equal(existsSync(join(project.cwd, 'realdocs.json')), false);
+  assert.equal(existsSync(join(project.cwd, 'AGENTS.md')), false);
+
+  project.run('install-skill', '--skills-dir', '.claude/skills');
+  assert.equal(project.read('.claude/skills/realdocs-c4/SKILL.md'), bundled(skillPath));
+  assert.equal(project.read('.claude/skills/realdocs-bootstrap/SKILL.md'), bundled(bootstrapPath));
+  assert.equal(project.result('install-skill', '--skills-dir=').status, 1);
+  assert.equal(project.result('install-skill', '--out', 'unused').status, 1);
+  assert.match(project.result('init', '--skills-dir', 'unused').stderr, /--skills-dir/);
+});
+
+test('install-skill can add documentation maintenance to existing or new agent instructions', t => {
+  const original = '# Existing rules\r\n\r\nKeep these instructions.';
+  const project = fixture(t, { 'AGENTS.md': original });
+  const template = readFileSync(new URL('../.agents/realdocs-instructions.md', import.meta.url), 'utf8');
+
+  project.run('install-skill');
+  assert.equal(project.read('AGENTS.md'), original);
+  project.run('install-skill', '--instructions-file', 'AGENTS.md');
+  const updated = project.read('AGENTS.md');
+  assert.equal(updated, original + '\r\n\r\n' + template.replace(/\n/g, '\r\n'));
+
+  const customized = updated.replace('Before completing', 'Before merging');
+  project.write('AGENTS.md', customized);
+  project.run('install-skill', '--instructions-file', 'AGENTS.md');
+  assert.equal(project.read('AGENTS.md'), customized);
+
+  project.run('install-skill', '--skills-dir', '.claude/skills', '--instructions-file', 'CLAUDE.md');
+  assert.equal(project.read('CLAUDE.md'), template);
+  assert.equal(project.result('install-skill', '--instructions-file=').status, 1);
+  assert.match(project.result('init', '--instructions-file', 'README.md').stderr, /--instructions-file/);
+});
+
 test('diff reports source, Markdown, and diagram dependencies against a Git revision', t => {
   const project = fixture(t, {
     'realdocs.json': JSON.stringify({ pages: ['docs/architecture.md', 'docs/runbook.md', 'docs/unrelated.md'], sections: {

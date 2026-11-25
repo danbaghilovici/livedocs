@@ -13,6 +13,9 @@
   },
   "files": [
     "dist/*.js",
+    ".agents/skills/realdocs-c4/SKILL.md",
+    ".agents/skills/realdocs-bootstrap/SKILL.md",
+    ".agents/realdocs-instructions.md",
     "assets/file-map.css",
     "assets/file-map.js",
     "assets/icon.svg"
