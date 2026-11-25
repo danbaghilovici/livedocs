@@ -1,0 +1,8 @@
+{
+  "name": "fulfillment-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "docs": "node ../../dist/cli.js --page README.md --page docs/architecture.md --page docs/quickstart.md --page docs/delivery.md --page docs/warehouse.md --page docs/integrations.md --page docs/decisions/reservation-lifecycle.md --entry src/index.ts --entry src/contracts.ts --entry src/inventory.ts --entry src/fulfillment.ts --entry src/shipping.js --entry src/legacy.cjs --entry src/catalog/products.ts --entry src/catalog/orders.ts --entry src/delivery/destination.ts --entry src/delivery/dispatch.ts --entry src/integrations/checkout.ts --entry src/integrations/notification.ts --entry src/operations/availability.ts --entry src/operations/cancellation.ts --out dist/wiki --graph --strict --timings"
+  }
+}

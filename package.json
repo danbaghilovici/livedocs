@@ -1,0 +1,32 @@
+{
+  "name": "livedocs",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Generate a Markdown or HTML wiki from source code and its documentation comments.",
+  "type": "module",
+  "bin": {
+    "livedocs": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "assets/file-map.css",
+    "assets/file-map.js"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test"
+  },
+  "dependencies": {
+    "cytoscape": "3.34.3",
+    "markdown-it": "15.0.3",
+    "mermaid": "11.14.0",
+    "micromark": "4.0.2",
+    "typescript": "6.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5"
+  }
+}
