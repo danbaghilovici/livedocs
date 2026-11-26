@@ -98,6 +98,11 @@ export function wikiPath(name: string, directory: 'modules' | 'pages', extension
   return [directory, ...folders, `${pageName}.${extension}`].join('/');
 }
 
+/** The output file of a page or entry: its placed route, or the path that mirrors its source. */
+export function pageFile(documentation: Documentation, name: string, kind: 'modules' | 'pages', extension: PageExtension): string {
+  return documentation.site?.routes[name]?.file ?? wikiPath(name, kind, extension);
+}
+
 function docText(parts: DocPart[], file: string, addresses: ReadonlyMap<string, Address>): string {
   return parts.map(part => {
     if (!part.link) return part.code ? codeSpan(part.text) : part.text;
@@ -148,8 +153,8 @@ export function renderWiki(
   const tagged = new Map<string, string[]>();
   const home = `index.${extension}`;
   const tagIndex = `tags.${extension}`;
-  const modules = documentation.modules.map(module => ({ ...module, file: wikiPath(module.name, 'modules', extension) }));
-  const pages = (documentation.pages ?? []).map(page => ({ ...page, file: wikiPath(page.name, 'pages', extension) }));
+  const modules = documentation.modules.map(module => ({ ...module, file: pageFile(documentation, module.name, 'modules', extension) }));
+  const pages = (documentation.pages ?? []).map(page => ({ ...page, file: pageFile(documentation, page.name, 'pages', extension) }));
 
   function indexTags(tags: string[] | undefined, label: string, file: string, anchor?: string): void {
     if (!tags?.length) return;

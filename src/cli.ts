@@ -8,6 +8,7 @@ import { configName, readSite } from './config.js';
 import { compileDiagrams } from './diagrams.js';
 import { renderMarkdownGraph } from './graph.js';
 import { renderWiki, type PageExtension } from './markdown.js';
+import { placeDocumentation } from './navigation.js';
 import type { Diagnostic, Documentation } from './model.js';
 import { releaseManifestName, writeWiki } from './output.js';
 import { createProgram, projectFromArguments, watchProject, type Project } from './project.js';
@@ -66,7 +67,7 @@ interface RunOptions {
 }
 
 function prepareDocumentation(extractedCode: Documentation, project: Project, options: RunOptions): Documentation {
-  const inputs = options.includePages?.(extractedCode, project, options.extension) ?? extractedCode;
+  const inputs = options.includePages?.(extractedCode, project, options.extension) ?? placeDocumentation(extractedCode, options.extension);
   return compileDiagrams(inputs, options.extension);
 }
 
