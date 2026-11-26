@@ -3,7 +3,7 @@ import { posix, resolve } from 'node:path';
 import MarkdownIt from 'markdown-it';
 import { parse, postprocess, preprocess } from 'micromark';
 import { anchorFor, encodeHrefComponent, explicitAnchor, href, symbolAnchor, wikiPath, type PageExtension } from './markdown.js';
-import { normalizeTagLabels, type AuthoredPage, type Diagnostic, type Documentation, type MarkdownContent } from './model.js';
+import { normalizeTagLabels, placementError, type AuthoredPage, type Diagnostic, type Documentation, type MarkdownContent } from './model.js';
 import { projectPath, type Project } from './project.js';
 
 const markdown = {
@@ -54,20 +54,32 @@ function encodePath(path: string): string {
 function readPageAnnotations(text: string): MarkdownContent {
   const lines = text.split('\n');
   const tags: string[] = [];
+  const placement: { category?: string; path?: string } = {};
+  const annotationErrors: { message: string; line: number }[] = [];
   let zone: string | undefined;
   let annotated = false;
   let firstLine = 0;
   for (; firstLine < lines.length; firstLine++) {
     const line = lines[firstLine].trim();
     if (!line) continue;
-    const annotation = /^<!--\s*@(?:realdocs|livedocs):(tag|zone)(?:[ \t]+(.*?))?\s*-->$/.exec(line);
+    const annotation = /^<!--\s*@(?:realdocs|livedocs):(tag|zone|category|path)(?:[ \t]+(.*?))?\s*-->$/.exec(line);
     if (!annotation) break;
     annotated = true;
-    if (annotation[1] === 'tag') tags.push(annotation[2] ?? '');
-    else zone ??= annotation[2]?.trim() || undefined;
+    const [, name, value = ''] = annotation;
+    if (name === 'tag') tags.push(value);
+    else if (name === 'zone') zone ??= value.trim() || undefined;
+    else {
+      const key = name as 'category' | 'path';
+      const error = placementError(key, value, placement[key] !== undefined);
+      if (error) annotationErrors.push({ message: error, line: firstLine + 1 });
+      else placement[key] = value.trim();
+    }
   }
   if (!annotated) return { markdown: text };
-  return { markdown: lines.slice(firstLine).join('\n'), sourceLine: firstLine + 1, tagLabels: normalizeTagLabels(tags), zone };
+  return {
+    markdown: lines.slice(firstLine).join('\n'), sourceLine: firstLine + 1, tagLabels: normalizeTagLabels(tags), zone,
+    ...placement, ...(annotationErrors.length && { annotationErrors }),
+  };
 }
 
 function headingsIn(content: MarkdownContent, extension: PageExtension, taken = new Set<string>()) {
@@ -243,6 +255,9 @@ export function includePages(documentation: Documentation, project: Project, ext
       continue;
     }
     const page = headingsIn(readPageAnnotations(text), extension);
+    for (const { message, line } of page.annotationErrors ?? []) {
+      diagnostics.push({ level: 'error', message, location: { file: name, line, column: 1 } });
+    }
     outputPaths.add(output);
     registry.set(name, {
       output,

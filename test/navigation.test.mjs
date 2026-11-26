@@ -29,3 +29,19 @@ test('reads placement settings from realdocs.json and rejects invalid ones', t =
     assert.match(result.stderr, message);
   }
 });
+
+test('reads category and path annotations and reports invalid ones at their source', t => {
+  const project = fixture(t, {
+    'docs/ok.md': '<!-- @livedocs:category Decisions -->\n<!-- @realdocs:path a/b -->\n# OK\n',
+    'docs/a.md': '<!-- @realdocs:category Decisions -->\n<!-- @realdocs:category Other -->\n# A\n',
+    'docs/b.md': '<!-- @realdocs:category -->\n# B\n',
+    'src/index.ts': '/**\n * @realdocs:file Entry.\n * @realdocs:path a/b\n * @realdocs:path c\n */\nexport const x = 1;\n',
+  });
+  const args = ['--entry', 'src/index.ts', '--page', 'docs/ok.md', '--page', 'docs/a.md', '--page', 'docs/b.md'];
+  const result = project.result('check', ...args);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /docs\/a\.md:2:1: error: A file can have only one @realdocs:category\./);
+  assert.match(result.stderr, /docs\/b\.md:1:1: error: @realdocs:category needs a value\./);
+  assert.match(result.stderr, /src\/index\.ts:4:1: error: A file can have only one @realdocs:path\./);
+  assert.doesNotMatch(result.stderr, /docs\/ok\.md/);
+});

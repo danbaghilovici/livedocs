@@ -155,3 +155,10 @@ export interface FileGraph {
 export function normalizeTagLabels(labels: readonly string[]): string[] {
   return [...new Set(labels.map(label => label.trim().toLowerCase().normalize('NFC').replace(/\s+/gu, '-')).filter(Boolean))];
 }
+
+/** Why a `category` or `path` annotation value is unusable, or undefined when it is fine. */
+export function placementError(name: 'category' | 'path', value: string, repeated: boolean): string | undefined {
+  if (repeated) return `A file can have only one @realdocs:${name}.`;
+  if (!value.trim()) return `@realdocs:${name} needs a value.`;
+  if (/[\r\n]/.test(value.trim())) return `@realdocs:${name} must be a single line.`;
+}
