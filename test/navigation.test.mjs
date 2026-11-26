@@ -154,3 +154,51 @@ test('versioned manifests, impact reports, and the file map use placed routes', 
   const data = JSON.parse(project.read('site/file-map.html').match(/id="file-map-data">(.*?)<\/script>/s)[1]);
   assert.deepEqual(data.nodes.find(node => node.path === 'docs/guide.md').zone, 'Guides');
 });
+
+test('renders home, group index pages, breadcrumbs, and a file map page in Markdown', t => {
+  const project = fixture(t, {
+    'README.md': '# Shop\n\nWelcome.\n',
+    'docs/adr/README.md': '# Decisions\n\nHow we decide.\n',
+    'docs/adr/0002-b.md': '<!-- @realdocs:path storage/0002-b -->\n# ADR 2\n',
+    'docs/adr/0010-c.md': '# ADR 10\n',
+    'docs/adr/0009-a.md': '# ADR 9\n',
+    'docs/notes.md': '# Notes\n',
+    'src/index.ts': '/** @realdocs:file Entry. */\nexport const x = 1;\n',
+    'realdocs.json': JSON.stringify({
+      pages: ['README.md', 'docs/adr/README.md', 'docs/adr/0002-b.md', 'docs/adr/0010-c.md', 'docs/adr/0009-a.md', 'docs/notes.md'],
+      groups: { 'decisions/storage': 'Storage layer' },
+      rules: [{ files: 'docs/adr/*.md', category: 'Decisions' }],
+      sections: { api: { title: 'API', entries: ['src/index.ts'] } },
+    }),
+  });
+  project.run('build', '--out', 'wiki', '--graph');
+  const home = project.read('wiki/index.md');
+  assert.match(home, /^# Shop\n\nWelcome\./m);
+  assert.match(home, /- \[Decisions\]\(decisions\/index\.md\)\n  - \[Storage layer\]\(decisions\/storage\/index\.md\)/);
+  assert.match(home, /- \[Code reference\]\(sections\/index\.md\)/);
+  assert.match(home, /- \[Other pages\]\(pages\/index\.md\)\n  - \[Notes\]\(pages\/docs\/notes\.md\)/);
+  assert.match(home, /\[File map\]\(file-map\.md\)/);
+  assert.doesNotMatch(home, /```mermaid/);
+  assert.match(project.read('wiki/file-map.md'), /^## File map\n\n```mermaid/m);
+
+  const decisions = project.read('wiki/decisions/index.md');
+  assert.match(decisions, /^# Decisions\n\nHow we decide\./m);
+  // sub-groups first, then pages in natural order: 0009 before 0010
+  assert.match(decisions, /\[Storage layer\]\(storage\/index\.md\)[\s\S]*\[ADR 9\]\(0009-a\.md\)[\s\S]*\[ADR 10\]\(0010-c\.md\)/);
+  assert.match(project.read('wiki/decisions/storage/0002-b.md'),
+    /^\[Home\]\(\.\.\/\.\.\/index\.md\) › \[Decisions\]\(\.\.\/index\.md\) › \[Storage layer\]\(index\.md\)$/m);
+  assert.match(project.read('wiki/sections/api/index.md'), /\[index\.ts\]\(\.\.\/\.\.\/modules\/src\/index\.ts\.md\)/);
+  assert.match(project.read('wiki/sections/api/index.md'), /## File map/);
+
+  // moving a page removes its old output
+  project.write('docs/notes.md', '<!-- @realdocs:category Guides -->\n# Notes\n');
+  project.run('build', '--out', 'wiki');
+  assert.ok(existsSync(join(project.cwd, 'wiki/guides/notes.md')));
+  assert.equal(existsSync(join(project.cwd, 'wiki/pages/docs/notes.md')), false);
+});
+
+test('generates a home page from the tree when there is no README', t => {
+  const project = fixture(t, { 'src/index.ts': 'export const x = 1;\n' });
+  project.run('build', '--entry', 'src/index.ts', '--out', 'wiki');
+  assert.match(project.read('wiki/index.md'), /^# Project documentation\n[\s\S]*- \[Code reference\]\(sections\/index\.md\)\n  - \[index\.ts\]\(modules\/src\/index\.ts\.md\)/m);
+});

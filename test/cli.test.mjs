@@ -269,7 +269,8 @@ test('uses a Markdown-only config and reports invalid section paths', t => {
     'extra.md': '# Extra guide',
   });
   project.run('build', '--out', 'wiki');
-  assert.match(project.read('wiki/index.md'), /\[Root guide\]\(pages\/README\.md\)/);
+  assert.match(project.read('wiki/index.md'), /^# Root guide/m);
+  assert.equal(existsSync(join(project.cwd, 'wiki/pages/README.md')), false);
   project.run('build', '--page', 'extra.md', '--out', 'wiki');
   assert.match(project.read('wiki/index.md'), /\[Extra guide\]\(pages\/extra\.md\)/);
 
@@ -336,9 +337,10 @@ test('builds one repo-wide wiki and standalone wikis from the same app configs',
     execFileSync(process.execPath, [cli, 'build', '--strict'], { cwd, stdio: 'pipe' });
     const appWiki = `apps/${app}/${wiki}`;
     const appHome = project.read(`${appWiki}/index.md`);
-    assert.ok(appHome.startsWith(`# ${app}\n`));
+    // The app README is the standalone wiki's homepage.
+    assert.match(appHome, new RegExp(`^# ${app} guide$`, 'm'));
     assert.match(appHome, /\[api\]\(sections\/api\/index\.md\)/);
-    assert.match(project.read(`${appWiki}/pages/README.md`), /\.\.\/modules\/src\/index\.ts\.md#symbol-/);
+    assert.match(appHome, /\(modules\/src\/index\.ts\.md#symbol-/);
     assert.equal(existsSync(join(project.cwd, appWiki, 'pages/ARCHITECTURE.md')), false);
   }
 });
@@ -582,14 +584,14 @@ module.exports = function flatFee() { return 450; };
   project.run('build', '--entry', 'index.ts', '--entry', 'rates.cjs', '--out', 'wiki');
 
   const api = project.read('wiki/modules/index.ts.md');
-  assert.match(api, /^# `index\.ts`\n\nOverview of the \*\*public API\*\*\.\n\nUse this entry point/);
+  assert.match(api, /^\[Home\]\(\.\.\/index\.md\) › \[Code reference\]\(\.\.\/sections\/index\.md\)\n\n# `index\.ts`\n\nOverview of the \*\*public API\*\*\.\n\nUse this entry point/);
   assert.match(api, /```mermaid\n---\nconfig:\n  theme: forest\n---\nflowchart TD\n  Source --> Wiki\n```/);
   assert.match(api, /## `version`[\s\S]*Version of the protocol\./);
   assert.equal(api.match(/Overview of the/g)?.length, 1);
   assert.doesNotMatch(api, /@realdocs:file/);
 
   const legacy = project.read('wiki/modules/rates.cjs.md');
-  assert.match(legacy, /^# `rates\.cjs`\n\nLegacy rate service\./);
+  assert.match(legacy, /^\[Home\]\(\.\.\/index\.md\) › \[Code reference\]\(\.\.\/sections\/index\.md\)\n\n# `rates\.cjs`\n\nLegacy rate service\./);
   assert.match(legacy, /## `module\.exports`[\s\S]*Returns the flat fee\./);
   assert.doesNotMatch(legacy, /This comment occurs after a declaration/);
 });
@@ -831,7 +833,7 @@ export const count = 1;
   assert.match(page, /<h2(?: [^>]*)?><code>count<\/code><\/h2>/);
 });
 
-test('embeds the file map and its relationships in both wiki indexes', t => {
+test('puts the file map and its relationships on a page of its own in both formats', t => {
   const project = fixture(t, {
     'src/index.ts': "export { prepare } from './workflow.js';",
     'src/workflow.ts': `/**
@@ -848,7 +850,9 @@ export function prepare(order: Order) { return stock(order.quantity); }
   });
   const args = ['--entry', 'src/index.ts', '--entry', 'src/workflow.ts', '--page', 'docs/guide.md', '--graph'];
   project.run('build', ...args, '--out', 'wiki');
-  const graph = project.read('wiki/index.md');
+  assert.doesNotMatch(project.read('wiki/index.md'), /```mermaid/);
+  assert.match(project.read('wiki/index.md'), /\[File map\]\(file-map\.md\)/);
+  const graph = project.read('wiki/file-map.md');
   assert.match(graph, /^## File map\n\n```mermaid\nflowchart/m);
   assert.match(graph, /\(pages\/docs\/guide\.md\)/);
   assert.equal(existsSync(join(project.cwd, 'wiki/graph.md')), false);
@@ -856,7 +860,8 @@ export function prepare(order: Order) { return stock(order.quantity); }
   assert.match(graph, /src\/model\/order\.ts/);
 
   project.run('build', ...args, '--out', 'site', '--format', 'html');
-  const html = project.read('site/index.html');
+  assert.doesNotMatch(project.read('site/index.html'), /file-map-data/);
+  const html = project.read('site/file-map.html');
   assert.match(html, /<section[^>]*aria-labelledby="file-map-title"/);
   assert.match(html, /<h2 id="file-map-title">File map<\/h2>/);
   assert.equal(existsSync(join(project.cwd, 'site/graph.html')), false);
@@ -880,6 +885,7 @@ export function prepare(order: Order) { return stock(order.quantity); }
 
   project.run('build', ...args.filter(arg => arg !== '--graph'), '--out', 'site', '--format', 'html');
   assert.doesNotMatch(project.read('site/index.html'), /file-map-data|cytoscape/);
+  assert.equal(existsSync(join(project.cwd, 'site/file-map.html')), false);
   assert.equal(existsSync(join(project.cwd, 'site/assets/cytoscape.min.js')), false);
 });
 
@@ -907,7 +913,9 @@ test('includes explicitly selected Markdown and resolves links in both wiki form
   project.run('build', ...args, '--out', 'wiki');
   project.run('build', ...args, '--out', 'site', '--format', 'html');
 
-  assert.match(project.read('wiki/index.md'), /\[Fulfillment\]\(pages\/README\.md\)/);
+  // README.md is the homepage, so its links are rebased from the wiki root.
+  assert.match(project.read('wiki/index.md'), /^# Fulfillment$/m);
+  assert.match(project.read('wiki/index.md'), /^\[architecture\]: pages\/docs\/architecture\.md#shipment-flow$/m);
   assert.match(project.read('wiki/modules/src/index.ts.md'), /\(\.\.\/\.\.\/pages\/docs\/architecture\.md#shipment-flow\)/);
   const architecture = project.read('wiki/pages/docs/architecture.md');
   assert.match(architecture, /id="shipment-flow"/);
@@ -916,11 +924,10 @@ test('includes explicitly selected Markdown and resolves links in both wiki form
   assert.match(architecture, /^> ### Decision notes <a id="decision-notes"><\/a> ###$/m);
   assert.equal(existsSync(join(project.cwd, 'wiki/pages/notes.md')), false);
 
-  assert.match(project.read('site/index.html'), /href="pages\/docs\/architecture\.html"/);
-  assert.match(project.read('site/pages/README.html'), /href="docs\/architecture\.html#shipment-flow"/);
+  assert.match(project.read('site/index.html'), /href="pages\/docs\/architecture\.html#shipment-flow"/);
   const html = project.read('site/pages/docs/architecture.html');
   assert.match(html, /<h2 id="shipment-flow">Shipment flow<\/h2>/);
-  assert.match(html, /href="\.\.\/README\.html#fulfillment"/);
+  assert.match(html, /href="\.\.\/\.\.\/index\.html#fulfillment"/);
   assert.match(html, /href="\.\.\/\.\.\/modules\/src\/index\.ts\.html#symbol-prepareShipment"/);
   assert.match(html, /<h3 id="decision-notes">Decision notes<\/h3>/);
 });
@@ -931,12 +938,12 @@ test('preserves query values when a Markdown link is rewritten', t => {
     'other.md': '# Linked guide',
   });
   project.run('build', '--page', 'README.md', '--page', 'other.md', '--strict', '--out', 'wiki', '--format', 'html');
-  const html = project.read('wiki/pages/README.html');
-  assert.match(html, /href="other\.html\?filter=foo%29&amp;copy;#linked-guide"/);
+  const html = project.read('wiki/index.html');
+  assert.match(html, /href="pages\/other\.html\?filter=foo%29&amp;copy;#linked-guide"/);
   assert.match(html, /id="literal-heading"/);
 
   project.run('build', '--page', 'README.md', '--page', 'other.md', '--strict', '--out', 'markdown');
-  const markdown = project.read('markdown/pages/README.md');
+  const markdown = project.read('markdown/index.md');
   assert.match(markdown, /<div>\n## Literal heading\n/);
   assert.doesNotMatch(markdown, /id="literal-heading"/);
 });
@@ -954,7 +961,7 @@ test('checks links in Markdown-only projects and reports missing targets at the 
 
   project.write('README.md', '# Guide\n\n[Linked guide](other.md)\n\n[unused]: missing.md\n');
   project.run('build', '--page', 'README.md', '--page', 'other.md', '--strict', '--out', 'wiki');
-  assert.match(project.read('wiki/pages/README.md'), /\[Linked guide\]\(other\.md\)/);
+  assert.match(project.read('wiki/index.md'), /\[Linked guide\]\(pages\/other\.md\)/);
 });
 
 test('resolves GitHub heading slugs, explicit anchors, and line fragments in both formats', t => {
@@ -983,22 +990,22 @@ Body.
   });
   const args = ['--entry', 'src/index.ts', '--page', 'README.md', '--page', 'guide.md', '--strict'];
   project.run('build', ...args, '--out', 'wiki');
-  const markdown = project.read('wiki/pages/README.md');
+  const markdown = project.read('wiki/index.md');
   assert.match(markdown, /<a id="8-appendix--source-notes"><\/a>/);
   assert.match(markdown, /\[Appendix\]\(#8-appendix--source-notes\)/);
   assert.match(markdown, /\[Phases\]\(#deploy-phases\)/);
   assert.match(markdown, /^<a id="deploy-phases"><\/a>$/m);
-  assert.match(markdown, /\[Body\]\(guide\.md#second\)/);
-  assert.match(markdown, /\[Intro\]\(guide\.md#guide\)/);
-  assert.match(markdown, /\[Top\]\(guide\.md\)/);
-  assert.match(markdown, /\[Export\]\(\.\.\/modules\/src\/index\.ts\.md#symbol-second\)/);
+  assert.match(markdown, /\[Body\]\(pages\/guide\.md#second\)/);
+  assert.match(markdown, /\[Intro\]\(pages\/guide\.md#guide\)/);
+  assert.match(markdown, /\[Top\]\(pages\/guide\.md\)/);
+  assert.match(markdown, /\[Export\]\(modules\/src\/index\.ts\.md#symbol-second\)/);
 
   project.run('build', ...args, '--out', 'site', '--format', 'html');
-  const html = project.read('site/pages/README.html');
+  const html = project.read('site/index.html');
   assert.match(html, /<h2 id="8-appendix--source-notes">/);
   assert.match(html, /<a id="deploy-phases"><\/a>/);
   assert.doesNotMatch(html, /&lt;a id=/);
-  assert.match(html, /href="guide\.html#second"/);
+  assert.match(html, /href="pages\/guide\.html#second"/);
 
   project.write('README.md', '# Guide\n\n[Code](#in-code)\n\n```html\n<a id="in-code"></a>\n```\n\n`<a id="in-span"></a>` [Span](#in-span)\n');
   const code = project.result('check', '--page', 'README.md', '--strict');
@@ -1034,7 +1041,7 @@ test('separates missing link targets from files outside the wiki, and links thos
   project.write('README.md', '# Guide\n\n[Helper](src/helper.ts#L2) · [Script](scripts/setup.sh?raw=1) · [Folder](scripts/) · [Spaced](notes/a%20b.md)\n');
   project.write('notes/a b.md', '# Notes');
   project.run('build', '--strict', '--out', 'wiki');
-  const markdown = project.read('wiki/pages/README.md');
+  const markdown = project.read('wiki/index.md');
   assert.match(markdown, /\[Helper\]\(https:\/\/example\.com\/repo\/blob\/main\/src\/helper\.ts#L2\)/);
   assert.match(markdown, /\[Script\]\(https:\/\/example\.com\/repo\/blob\/main\/scripts\/setup\.sh\?raw=1\)/);
   assert.match(markdown, /\[Folder\]\(https:\/\/example\.com\/repo\/blob\/main\/scripts\/\)/);
@@ -1061,9 +1068,9 @@ test('links files outside a versioned wiki at the release commit', t => {
   const commit = git('rev-parse', 'HEAD').trim();
 
   project.run('build', '--out', 'latest');
-  assert.match(project.read('latest/pages/README.md'), /\(https:\/\/example\.com\/repo\/blob\/main\/scripts\/setup\.sh#L1\)/);
+  assert.match(project.read('latest/index.md'), /\(https:\/\/example\.com\/repo\/blob\/main\/scripts\/setup\.sh#L1\)/);
   project.run('build', '--version', '1.0.0');
-  assert.match(project.read('dist/realdocs-releases/1.0.0/pages/README.md'),
+  assert.match(project.read('dist/realdocs-releases/1.0.0/index.md'),
     new RegExp(`\\(https://github\\.com/example/project/blob/${commit}/scripts/setup\\.sh#L1\\)`));
 });
 
@@ -1083,7 +1090,7 @@ test('watch updates a standalone page and recovers after it is restored', { time
   };
 
   try {
-    const page = 'wiki/pages/README.html';
+    const page = 'wiki/index.html';
     await waitFor(/Watching for source changes/);
     const original = project.read(page);
     assert.match(original, /Original guide\./);
@@ -1095,7 +1102,7 @@ test('watch updates a standalone page and recovers after it is restored', { time
 
     const beforeRestore = output.length;
     project.write('README.md', '# Guide\n\nUpdated guide.\n');
-    await waitFor(/Generated 2 wiki page\(s\).*\(1 written\)/, beforeRestore);
+    await waitFor(/Generated 1 wiki page\(s\).*\(1 written\)/, beforeRestore);
     assert.match(project.read(page), /Updated guide\./);
   } finally {
     child.kill();
@@ -1306,7 +1313,7 @@ test('watch keeps the last successful wiki when code and a Markdown page change 
 
   try {
     const page = 'wiki/modules/src/index.ts.md';
-    const guide = 'wiki/pages/README.md';
+    const guide = 'wiki/index.md';
     await waitForOutput(/Watching for source changes/);
     const original = project.read(page);
     const originalGuide = project.read(guide);

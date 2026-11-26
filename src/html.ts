@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import MarkdownIt from 'markdown-it';
 import { renderHtmlGraph } from './graph.js';
-import { explicitAnchor, href, renderWiki } from './markdown.js';
+import { crumbLine, explicitAnchor, href, renderWiki } from './markdown.js';
 import type { Documentation } from './model.js';
 
 const require = createRequire(import.meta.url);
@@ -131,7 +131,7 @@ function htmlPage(file: string, title: string, body: string, hasDiagram: boolean
 </head>
 <body>
 <main${directory ? ' class="wiki-index"' : ''}>
-${directory ? `<div class="wiki-directory">\n${body}</div>\n${graph?.body ?? ''}` : body}</main>
+${directory ? `<div class="wiki-directory">\n${body}</div>\n` : body}${graph?.body ?? ''}</main>
 </body>
 </html>
 `;
@@ -140,9 +140,9 @@ ${directory ? `<div class="wiki-directory">\n${body}</div>\n${graph?.body ?? ''}
 export function renderHtmlWiki(documentation: Documentation): { files: Map<string, string>; pages: number } {
   let needsMermaid = false;
   let graphAssets: ReturnType<typeof renderHtmlGraph>['assets'] | undefined;
-  const files = renderWiki(documentation, 'html', (file, title, blocks, section) => {
+  const files = renderWiki(documentation, 'html', ({ file, title, blocks, crumbs, section }) => {
     let hasDiagram = false;
-    const body = blocks.map(block => {
+    const body = [crumbs.length ? crumbLine(crumbs, file) : '', ...blocks].filter(Boolean).map(block => {
       if (typeof block !== 'string' && 'anchor' in block) return `<div id="${escape(block.anchor)}"></div>\n`;
 
       // An unfinished code fence in an authored block must not consume generated navigation.
@@ -160,7 +160,7 @@ export function renderHtmlWiki(documentation: Documentation): { files: Map<strin
       return markdown.renderer.render(tokens, markdown.options, environment);
     }).join('');
     if (hasDiagram) needsMermaid = true;
-    const graph = documentation.fileGraph && (file === 'index.html' || section) ? renderHtmlGraph(documentation, file, section) : undefined;
+    const graph = documentation.fileGraph && (file === 'file-map.html' || section) ? renderHtmlGraph(documentation, file, section) : undefined;
     graphAssets ??= graph?.assets;
     return htmlPage(file, title, body, hasDiagram, graph);
   });
