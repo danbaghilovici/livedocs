@@ -34,8 +34,10 @@ We want:
 
 - Full-text search. (Later option: Pagefind, which indexes any folder of static HTML after the build.)
 - Redirect stubs at old URLs when a page moves.
-- A theme toggle or custom theme. The wiki uses Bootstrap's default (light) theme and stock
-  components (changed 2026-11-26 at the user's request; the first build used a custom dark palette).
+- A custom theme. The wiki uses Bootstrap's stock components and colour modes, dark by default with a
+  header switcher to light (changed 2026-11-26 at the user's request; the first build used a custom
+  dark palette). The choice is saved in `localStorage` (`realdocs-theme`) and applied before paint;
+  pages with diagrams or a file map reload after a switch so they redraw in the new colours.
 - Per-symbol (per-export) placement. Placement is per file; a code page is one entry file.
 - `realdocs init` suggesting categories (possible follow-up).
 - On-page table of contents.

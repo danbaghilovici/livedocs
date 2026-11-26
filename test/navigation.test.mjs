@@ -219,9 +219,11 @@ test('wraps every HTML page in the offline Bootstrap shell', t => {
   });
   project.run('build', '--format', 'html', '--out', 'site', '--graph');
   const page = project.read('site/decisions/storage/0021-x.html');
-  // Bootstrap's default theme: no colour mode and no overridden Bootstrap variables.
-  assert.match(page, /<html lang="en">/);
-  assert.doesNotMatch(page, /data-bs-theme|--bs-[a-z-]+\s*:/);
+  // Bootstrap's own colour modes: dark by default, with a saved choice applied before the page paints.
+  assert.match(page, /<html lang="en" data-bs-theme="dark">/);
+  assert.doesNotMatch(page, /--bs-[a-z-]+\s*:/);
+  assert.match(page, /<script>[^<]*localStorage\.getItem\('realdocs-theme'\)[^<]*<\/script>\s*<link rel="stylesheet"/);
+  assert.match(page, /<button[^>]*id="wiki-theme"[^>]*aria-label="Switch to light theme"/);
   assert.match(page, /<link rel="stylesheet" href="\.\.\/\.\.\/assets\/bootstrap\.min\.css">/);
   assert.match(page, /<script defer src="\.\.\/\.\.\/assets\/bootstrap\.bundle\.min\.js"><\/script>/);
   assert.doesNotMatch(page, /(?:src|href)="https?:\/\/(?!github\.com\/acme)/);

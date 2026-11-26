@@ -251,7 +251,7 @@ RealDocs resolves the label from the current export name and puts the documentat
 
 ## HTML output
 
-Pass `--format html` to `build` or `watch` to generate linked HTML pages. Open `index.html` in a browser. Every page has a header, a sidebar with the navigation tree, breadcrumbs, and a footer, styled with a bundled copy of Bootstrap. On narrow screens the ☰ button opens the sidebar. Pages with Mermaid diagrams use a local renderer packaged in the output directory. The output works offline.
+Pass `--format html` to `build` or `watch` to generate linked HTML pages. Open `index.html` in a browser. Every page has a header, a sidebar with the navigation tree, breadcrumbs, and a footer, styled with a bundled copy of Bootstrap. Pages open in Bootstrap's dark theme; the ☀ button in the header switches to light and the browser remembers the choice. On narrow screens the ☰ button opens the sidebar. Pages with Mermaid diagrams use a local renderer packaged in the output directory. The output works offline.
 
 ```sh
 npx realdocs build --entry src/index.ts --format html --out dist/realdocs-html

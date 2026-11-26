@@ -46,6 +46,10 @@ const style = `
     --wiki-radius: var(--bs-border-radius);
   }
   .mermaid-diagram svg { display: block; margin-inline: auto; max-width: 100%; height: auto }
+  /* C4 draws boundaries and relationships in fixed dark grey, outside Mermaid's theme. */
+  [data-bs-theme="dark"] .mermaid-c4 svg :is(text, tspan)[fill="#444444"], [data-bs-theme="dark"] .mermaid-c4 svg :is(text, tspan)[fill="black"],
+  [data-bs-theme="dark"] .mermaid-c4 svg marker[id$="-arrowhead"] path, [data-bs-theme="dark"] .mermaid-c4 svg marker[id$="-arrowend"] path { fill: var(--bs-secondary-color) }
+  [data-bs-theme="dark"] .mermaid-c4 svg [stroke="#444444"] { stroke: var(--bs-secondary-color) }
   /* Bootstrap's reboot floats and enlarges legends; the file map filters expect plain ones. */
   .file-map legend { float: none; width: auto; margin: 0; font-size: inherit; line-height: inherit }
 `;
@@ -60,7 +64,8 @@ const runner = `
   mermaid.initialize({
     // Mermaid 12 changed the default flowchart layout, look, and label width (to 120px, which
     // clips single-word labels such as export names); keep the established rendering.
-    startOnLoad: false, securityLevel: 'strict', theme: 'default', layout: 'dagre', look: 'classic',
+    startOnLoad: false, securityLevel: 'strict',
+    theme: document.documentElement.dataset.bsTheme === 'dark' ? 'dark' : 'default', layout: 'dagre', look: 'classic',
     flowchart: { wrappingWidth: 200 },
   });
   const diagrams = document.querySelectorAll('pre > code.language-mermaid');
@@ -72,6 +77,7 @@ const runner = `
       const { svg } = await mermaid.render('realdocs-diagram-' + index, source);
       const figure = document.createElement('figure');
       figure.className = 'mermaid-diagram border rounded p-3';
+      if (diagram.diagramType === 'c4') figure.classList.add('mermaid-c4');
       figure.innerHTML = svg;
       code.parentElement.replaceWith(figure);
     } catch (error) {

@@ -671,8 +671,10 @@ export const shipment = { ready: true };
   const home = project.read('wiki/index.html');
   assert.match(home, /^<!doctype html>/i);
   assert.match(home, /href="modules\/src\/index\.ts\.html"/);
-  // The bundled Bootstrap script is the only one a page without diagrams loads.
-  assert.deepEqual(home.match(/<script[^>]*>/g), ['<script defer src="assets/bootstrap.bundle.min.js">']);
+  // The bundled Bootstrap script is the only file a page without diagrams loads; the two inline
+  // scripts are the theme loader and switcher.
+  assert.deepEqual(home.match(/<script[^>]*src=[^>]*>/g), ['<script defer src="assets/bootstrap.bundle.min.js">']);
+  assert.equal(home.match(/<script>/g)?.length, 2);
   assert.equal(existsSync(join(project.cwd, 'wiki/index.md')), false);
   assert.equal(existsSync(join(project.cwd, 'wiki/modules/src/index.ts.md')), false);
 
@@ -688,7 +690,9 @@ export const shipment = { ready: true };
   const shipping = project.read('wiki/modules/src/shipping.ts.html');
   assert.match(shipping, /id="symbol-shipment"/);
   assert.match(shipping, /&lt;script&gt;window\.exampleMarker/);
-  assert.deepEqual(shipping.match(/<script[^>]*>/g), ['<script defer src="../../assets/bootstrap.bundle.min.js">']);
+  assert.deepEqual(shipping.match(/<script[^>]*src=[^>]*>/g), ['<script defer src="../../assets/bootstrap.bundle.min.js">']);
+  assert.equal(shipping.match(/<script>/g)?.length, 2);
+  assert.doesNotMatch(shipping, /<script>window\.exampleMarker/);
   assert.doesNotMatch(shipping, /href="javascript:|onmouseover="/);
   assert.match(shipping, /&lt;a id=&quot;unsafe&quot; onmouseover=/);
   assert.match(shipping, /<a id="safe"><\/a>/);
