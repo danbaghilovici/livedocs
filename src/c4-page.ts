@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { posix } from 'node:path';
+import { encodeHrefComponent } from './markdown.js';
 import { mermaidSetup, style } from './html.js';
 import type { C4Item, C4Model, Documentation } from './model.js';
 
@@ -9,11 +10,18 @@ let client: string | undefined;
 let stylesheet: string | undefined;
 
 // Relative links in an item's HTML were written for the page it came from; c4.html sits at the wiki root.
+// `origin` is a raw output path (folder names may contain %, #, quotes), so encode its segments the way
+// the wiki's own links do; the link itself is already URL-encoded and HTML-escaped.
 function rebase(html: string, origin: string): string {
+  const encodedOrigin = origin.split('/').map(encodeHrefComponent).join('/');
+  const directory = posix.dirname(encodedOrigin);
   return html.replace(/(\s(?:href|src)=")([^"]*)"/g, (whole, prefix: string, url: string) => {
     if (!url || url.startsWith('/') || /^[a-z][a-z0-9+.-]*:/i.test(url)) return whole;
-    const target = url.startsWith('#') ? origin + url : posix.normalize(posix.join(posix.dirname(origin), url));
-    return `${prefix}${target}"`;
+    const split = url.search(/[?#]/);
+    const path = split < 0 ? url : url.slice(0, split);
+    const suffix = split < 0 ? '' : url.slice(split);
+    const target = path ? posix.normalize(posix.join(directory, path)) : encodedOrigin;
+    return `${prefix}${target}${suffix}"`;
   });
 }
 
@@ -33,7 +41,7 @@ export function renderC4Page(documentation: Documentation, renderMarkdown: (mark
   <title>${escape(title)} architecture</title>
   <style>${style}</style>
   <link rel="stylesheet" href="assets/c4.css">
-  <script src="assets/mermaid.min.js"></script>
+  <script defer src="assets/mermaid.min.js"></script>
   <script>globalThis.realdocsConfigureMermaid = mermaid => {
 ${mermaidSetup}};</script>
   <script defer src="assets/c4.js"></script>

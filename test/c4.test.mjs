@@ -3,7 +3,7 @@ import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, posix } from 'node:path';
 import { test } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
@@ -132,11 +132,13 @@ const c4Project = t => fixture(t, {
   'docs/api.md': `# Order API\n\n${fence(apiComponents)}`,
   'docs/web.md': `# Web app\n\n${fence(webComponents)}`,
 });
+const encode = value => encodeURIComponent(value).replaceAll('(', '%28').replaceAll(')', '%29');
 const readModel = (project, ...args) => {
+  rmSync(join(project.cwd, 'wiki'), { recursive: true, force: true });
   const result = spawnSync(process.execPath, [cli, 'build', '--c4', '--format', 'html', '--out', 'wiki', ...args], { cwd: project.cwd, encoding: 'utf8' });
-  const page = existsSync(join(project.cwd, 'wiki/c4.html')) ? project.read('wiki/c4.html') : '';
-  const data = /<script type="application\/json" id="c4-data">([\s\S]*?)<\/script>/.exec(page);
-  return { result, model: data ? JSON.parse(data[1]) : null };
+  assert.equal(result.status, 0, result.stderr);
+  const data = /<script type="application\/json" id="c4-data">([\s\S]*?)<\/script>/.exec(project.read('wiki/c4.html'));
+  return { result, model: JSON.parse(data[1]) };
 };
 const pages = ['--page', 'docs/architecture.md', '--page', 'docs/api.md', '--page', 'docs/web.md'];
 
@@ -432,7 +434,9 @@ test('a multi-line marker comment is reported and never leaks into the page', t 
   const result = project.result('check', '--c4', ...shopArgs, '--page', 'docs/notes.md');
   assert.equal(result.status, 1);
   assert.match(result.stderr, /docs\/notes\.md:2:1: error: Place <!-- @realdocs:c4 … --> at the top/);
-  assert.doesNotMatch(result.stderr, /unknown|not attached|no marked/i);
+  assert.deepEqual(result.stderr.split('\n').filter(line => /\berror:/.test(line)),
+    [result.stderr.split('\n').find(line => /\berror:/.test(line))]);
+  assert.equal(result.stderr.match(/error:/g).length, 1);
 });
 
 test('a marked symbol re-exported from several modules makes one item', t => {
@@ -542,10 +546,41 @@ test('writes c4.html with the model, assets, and a homepage link only with --c4'
 test('escapes embedded data', t => {
   const project = marked(t);
   project.write('docs/adr.md', '<!-- @realdocs:c4 shop.api -->\n# ADR\n\nUse `</script><script>alert(1)</script>`.\n');
-  project.run('build', ...markedArgs, '--c4', '--format', 'html', '--out', 'wiki');
+  project.write('docs/xss.md', '# Xss\n\n' + fence(context.replace('"Charges cards"', '"</script><script>alert(2)</script>"')));
+  const { model } = readModel(project, ...markedArgs, '--page', 'docs/xss.md');
   const page = project.read('wiki/c4.html');
   assert.equal(page.match(/<\/script>/g).length, page.match(/<script/g).length);
+  assert.ok(JSON.stringify(model).includes('alert(2)'));
 });
+
+for (const [folder, label] of [['C#', 'hash'], ['100% done', 'percent'], ['q" onmouseover="alert(1)', 'quote']]) {
+  test(`rebased item links match the wiki's own links (${label} folder)`, t => {
+    const project = fixture(t, {
+      [`docs/${folder}/a.md`]: `# A\n\n${fence(context)}\n## Notes\n<!-- @realdocs:c4 shop -->\n\n[other](other.md) [frag](#notes) [query](?x=1) [both](other.md#a/../b) [up](../top.md#t)\n`,
+      [`docs/${folder}/other.md`]: '# Other\n',
+      'docs/top.md': '# Top\n',
+    });
+    const args = ['--page', `docs/${folder}/a.md`, '--page', `docs/${folder}/other.md`, '--page', 'docs/top.md'];
+    const { model } = readModel(project, ...args);
+    const item = model.items.find(i => i.kind === 'section');
+    const hrefs = [...item.html.matchAll(/ href="([^"]*)"/g)].map(m => m[1]);
+    assert.doesNotMatch(item.html, /onmouseover=/);
+    // The wiki's own page, rendered in place, links to the same targets relative to itself.
+    const origin = item.origin;
+    const own = [...project.read(`wiki/${origin}`).matchAll(/ href="([^"]*)"/g)].map(m => m[1])
+      .filter(h => /other|top|\?x|#notes/.test(h) && !h.includes('#a/'));
+    const encodedDir = origin.split('/').slice(0, -1).map(encode).join('/');
+    const expected = own.map(h => h.startsWith('#') || h.startsWith('?') ? `${origin.split('/').map(encode).join('/')}${h}`
+      : posix.normalize(`${encodedDir}/${h}`));
+    // A suffix after the first # is never normalized.
+    assert.ok(hrefs.includes(`${encodedDir}/other.md#a/../b`), hrefs.join('\n'));
+    assert.deepEqual(hrefs.filter(h => /other|top|\?x|#notes/.test(h) && !h.includes('#a/')), expected);
+    for (const h of hrefs.filter(h => /\.html([?#]|$)/.test(h))) {
+      const file = decodeURIComponent(h.split(/[?#]/)[0]);
+      assert.ok(existsSync(join(project.cwd, 'wiki', file)), `${h} resolves to a file`);
+    }
+  });
+}
 
 test('lists c4.html in a versioned build', t => {
   const project = fixture(t, { '.gitignore': 'dist/\n', 'docs/a.md': '# A\n\n' + fence(context) });
