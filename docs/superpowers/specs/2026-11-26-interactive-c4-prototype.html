@@ -1,0 +1,791 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dataris architecture (C4 spike)</title>
+<!-- Reference prototype. Run `npm ci` first; Mermaid loads from node_modules. -->
+<script src="../../../node_modules/mermaid/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    color-scheme: dark;
+    --wiki-page: #101614; --wiki-surface: #1a2521; --wiki-raised: #22302b; --wiki-ink: #e8efe9;
+    --wiki-muted: #b0c0b7; --wiki-line: #3b5046; --wiki-accent: #a6dfc3; --wiki-warn: #edc184;
+    --wiki-heading: Georgia, 'Times New Roman', serif; --wiki-mono: ui-monospace, 'Cascadia Code', monospace;
+    --wiki-radius: .45rem; --panel: min(30rem, 100vw);
+  }
+  *, *::before, *::after { box-sizing: border-box }
+  html, body { height: 100% }
+  body { margin: 0; font: .95rem/1.55 system-ui, sans-serif; background: var(--wiki-page); color: var(--wiki-ink);
+    display: grid; grid-template-rows: auto 1fr auto; overflow: hidden }
+  a { color: var(--wiki-accent); text-underline-offset: .2em }
+  code { font: .86em/1.5 var(--wiki-mono) }
+  :focus-visible { outline: 2px solid var(--wiki-accent); outline-offset: 3px }
+  button { font: inherit; color: inherit; background: var(--wiki-raised); border: 1px solid var(--wiki-line);
+    border-radius: var(--wiki-radius); padding: .3rem .7rem; cursor: pointer }
+  button:hover { border-color: var(--wiki-accent) }
+
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; padding: .7rem 1rem;
+    border-bottom: 1px solid var(--wiki-line) }
+  header h1 { font: 400 1.35rem/1.2 var(--wiki-heading); margin: 0 }
+  .spike { font-size: .75rem; color: var(--wiki-warn); border: 1px solid currentColor; border-radius: 99px; padding: .05rem .5rem }
+  nav.crumbs { display: flex; align-items: center; gap: .35rem; flex-wrap: wrap }
+  nav.crumbs button { background: none; border: 0; padding: .1rem .25rem; color: var(--wiki-accent); text-decoration: underline; text-underline-offset: .2em }
+  nav.crumbs [aria-current] { color: var(--wiki-ink); text-decoration: none; cursor: default }
+  nav.crumbs .sep { color: var(--wiki-muted) }
+  .level { font-size: .75rem; color: var(--wiki-muted); border: 1px solid var(--wiki-line); border-radius: 99px; padding: .05rem .55rem }
+  .variants { margin-inline-start: auto; display: flex; gap: .3rem; flex-wrap: wrap }
+  .variants button[aria-pressed="true"] { border-color: var(--wiki-accent); color: var(--wiki-accent) }
+
+  .workspace { position: relative; overflow: hidden; display: grid; grid-template-columns: 1fr auto }
+  .stage { position: relative; overflow: hidden; min-width: 0 }
+  .canvas { position: absolute; inset: 0; padding: 1rem; display: grid; place-items: center;
+    transition: transform .38s cubic-bezier(.4,0,.2,1), opacity .38s ease }
+  .canvas.instant { transition: none }
+  .canvas svg { width: 100%; height: 100%; max-width: none !important }
+  .canvas .c4-shape { cursor: pointer }
+  .canvas .c4-shape:focus { outline: none }
+  .canvas .c4-shape:focus-visible .label-container, .canvas .c4-shape:focus-visible rect.label-container { filter: drop-shadow(0 0 4px var(--wiki-accent)) }
+  .canvas .zoom-badge { pointer-events: none }
+  .canvas.zoomable-hover .c4-shape.has-children { cursor: zoom-in }
+
+  aside.panel { width: 0; overflow: hidden; border-inline-start: 1px solid transparent; background: var(--wiki-surface);
+    transition: width .25s ease; display: flex; flex-direction: column }
+  aside.panel.open { width: var(--panel); border-color: var(--wiki-line) }
+  .panel-inner { width: var(--panel); display: flex; flex-direction: column; min-height: 0; height: 100% }
+  .panel-head { padding: 1rem 1rem .6rem; border-bottom: 1px solid var(--wiki-line) }
+  .panel-head .row { display: flex; align-items: start; gap: .5rem }
+  .panel-head h2 { font: 400 1.45rem/1.15 var(--wiki-heading); margin: 0; flex: 1 }
+  .kind { font-size: .75rem; color: var(--wiki-muted) }
+  .marker { margin-top: .55rem; display: flex; align-items: center; gap: .4rem; font-size: .8rem; color: var(--wiki-muted) }
+  .marker code { color: var(--wiki-ink); background: var(--wiki-page); border: 1px solid var(--wiki-line); border-radius: .3rem; padding: .05rem .35rem; overflow-wrap: anywhere }
+  .marker button { padding: .05rem .4rem; font-size: .75rem }
+  .panel-actions { display: flex; gap: .4rem; margin-top: .7rem }
+  .primary { border-color: var(--wiki-accent); color: var(--wiki-accent) }
+  [role="tablist"] { display: flex; gap: .15rem; padding: 0 .6rem; border-bottom: 1px solid var(--wiki-line) }
+  [role="tab"] { background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: .55rem .55rem; color: var(--wiki-muted) }
+  [role="tab"][aria-selected="true"] { color: var(--wiki-ink); border-color: var(--wiki-accent) }
+  [role="tab"] .count { font-size: .72rem; color: var(--wiki-muted); margin-inline-start: .2rem }
+  [role="tabpanel"] { overflow: auto; padding: 1rem; flex: 1; min-height: 0 }
+  .item { border: 1px solid var(--wiki-line); border-radius: var(--wiki-radius); background: var(--wiki-page); margin-bottom: .8rem; overflow: hidden }
+  .item > .item-head { display: flex; gap: .5rem; align-items: baseline; padding: .55rem .75rem; border-bottom: 1px solid var(--wiki-line) }
+  .item-head strong { flex: 1; font-weight: 600 }
+  .item-head a, .item-head button { font-size: .8rem; white-space: nowrap }
+  .item .source { font: .75rem/1.4 var(--wiki-mono); color: var(--wiki-muted); padding: .4rem .75rem 0 }
+  .item .body { padding: .5rem .75rem .75rem }
+  .item .body table { border-collapse: collapse; font-size: .82rem; width: 100% }
+  .item .body th, .item .body td { border: 1px solid var(--wiki-line); padding: .3rem .45rem; text-align: start; vertical-align: top }
+  .item .body p { margin: .3rem 0 }
+  .item .diagram svg { max-width: 100%; height: auto; display: block; margin-inline: auto }
+  dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: .35rem .9rem; margin: 0 0 1rem }
+  dl.facts dt { color: var(--wiki-muted) }
+  dl.facts dd { margin: 0 }
+  h3 { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--wiki-muted); margin: 1.1rem 0 .4rem }
+  ul.rels { list-style: none; padding: 0; margin: 0 }
+  ul.rels li { padding: .3rem 0; border-top: 1px solid var(--wiki-line) }
+  ul.rels button { background: none; border: 0; padding: 0; color: var(--wiki-accent); text-decoration: underline; text-underline-offset: .2em }
+  .muted { color: var(--wiki-muted) }
+  .empty { color: var(--wiki-muted); font-style: italic }
+
+  footer { padding: .45rem 1rem; border-top: 1px solid var(--wiki-line); font-size: .8rem; color: var(--wiki-muted) }
+  kbd { font: .75rem var(--wiki-mono); border: 1px solid var(--wiki-line); border-radius: .25rem; padding: 0 .3rem }
+
+  dialog { width: min(92vw, 70rem); max-height: 90vh; background: var(--wiki-surface); color: var(--wiki-ink);
+    border: 1px solid var(--wiki-line); border-radius: var(--wiki-radius); padding: 0 }
+  dialog::backdrop { background: rgb(0 0 0 / .6) }
+  dialog .dlg-head { display: flex; gap: 1rem; align-items: center; padding: .6rem 1rem; border-bottom: 1px solid var(--wiki-line) }
+  dialog .dlg-head strong { flex: 1 }
+  dialog .dlg-body { padding: 1rem; overflow: auto; max-height: calc(90vh - 3rem) }
+  dialog .dlg-body svg { max-width: 100%; height: auto; display: block; margin-inline: auto }
+
+  @media (max-width: 760px) {
+    .workspace { grid-template-columns: 1fr }
+    aside.panel { position: absolute; inset: 0 0 0 auto; z-index: 2 }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Dataris architecture</h1>
+  <span class="spike" title="Throwaway prototype, not generated by RealDocs yet">spike</span>
+  <nav class="crumbs" aria-label="Zoom level"></nav>
+  <span class="level"></span>
+  <div class="variants" aria-label="Source views"></div>
+</header>
+<div class="workspace">
+  <div class="stage"><div class="canvas"></div></div>
+  <aside class="panel" aria-label="Element details"><div class="panel-inner"></div></aside>
+</div>
+<footer>
+  Click a box for details · Double-click a box marked <strong>+</strong>, or scroll up over it, to zoom in (<strong>↗</strong> jumps to a neighbour's own view) · Scroll down or <kbd>Backspace</kbd> to zoom out · <kbd>Esc</kbd> closes the panel
+</footer>
+<dialog id="enlarge"><div class="dlg-head"><strong></strong><button type="button" value="close">Close</button></div><div class="dlg-body"></div></dialog>
+
+<script>
+/*
+ * ---------------------------------------------------------------------------
+ * INPUT 1: the C4 Mermaid blocks RealDocs would collect from the selected
+ * guides and @realdocs:file overviews. Context and container views are the
+ * real ones from dataris-spec/ARCHITECTURE.md with descriptive aliases.
+ * The two component views are ILLUSTRATIVE: built from the module tables in
+ * ARCHITECTURE.md, because Dataris has no component views yet.
+ * ---------------------------------------------------------------------------
+ */
+const sources = [
+{ origin: 'ARCHITECTURE.md › System context', text: `C4Context
+title System context for Dataris
+Person(platformAdmin, "Platform administrator", "Creates tenants and their instances, approves instance retirement")
+Person(tenantUser, "Tenant user", "Staff who model data and manage users, and app users who read and write records")
+System(dataris, "Dataris", "Provisions a Supabase instance per tenant and serves tenant-defined data models and records")
+System_Ext(hostedSupabase, "Hosted Supabase and OTLP backend", "Optional, local stack with --source remote only")
+System_Ext(hostDockerEngine, "Host Docker Engine", "Runs the Dataris services and every tenant instance as containers")
+Rel(platformAdmin, dataris, "Manages tenants and instances", "HTTP")
+Rel(tenantUser, dataris, "Signs in, models data, reads and writes records", "HTTP")
+Rel(dataris, hostDockerEngine, "Creates and retires tenant instances", "Docker API over mTLS")
+Rel(dataris, hostedSupabase, "Platform database and auth, telemetry", "SQL, HTTP, OTLP")
+UpdateRelStyle(dataris, hostedSupabase, $offsetY="70")
+UpdateRelStyle(tenantUser, dataris, $offsetX="70")
+UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")` },
+{ origin: 'ARCHITECTURE.md › Containers › Serving requests', variant: 'Serving requests', text: `C4Container
+title Containers of Dataris: serving requests
+Person(platformAdmin, "Platform administrator", "Runs the platform")
+Person(tenantUser, "Tenant user", "Uses one tenant's portal and API")
+System_Boundary(dataris, "Dataris") {
+  Container(adminConsole, "Admin console", "Angular 22, CoreUI", "Browser app served by the Control Plane at /dashboard/")
+  Container(tenantPortal, "Tenant portal", "Angular 22, CoreUI", "Browser app served by Tenant Domain on the tenant's subdomain")
+  Container(controlPlane, "Control Plane", "NestJS", "Tenants, instances, quotas, admin API")
+  Container(edgeRouter, "Edge router", "Traefik 3", "Routes by host and path; no authentication")
+  Container(tenantDomain, "Tenant Domain", "NestJS", "Tenant API and model authoring facade")
+  ContainerDb(platformSupabase, "Platform Supabase", "PostgreSQL, GoTrue", "Registry, operations, models, authorization, analytics; admin accounts")
+  Container(dataService, "Data Service", "NestJS", "Models, publishing, records, UQL")
+  ContainerDb(tenantInstances, "Tenant instances", "Supabase per tenant", "Records, tenant users, storage")
+}
+Rel(platformAdmin, adminConsole, "Uses")
+Rel(tenantUser, tenantPortal, "Uses")
+Rel(adminConsole, edgeRouter, "/controlplane", "JSON/HTTP")
+Rel(tenantPortal, edgeRouter, "/tenantdomain", "JSON/HTTP")
+Rel(edgeRouter, controlPlane, "controlplane.<base>", "HTTP")
+Rel(edgeRouter, tenantDomain, "<slug>.<base>, <base>", "HTTP")
+Rel(edgeRouter, dataService, "/api/data (404 today)", "HTTP")
+Rel(tenantDomain, dataService, "Model authoring; record relay", "TCP :4006, HTTP")
+Rel(dataService, controlPlane, "Tenant context", "TCP :4002")
+Rel(controlPlane, platformSupabase, "Registry, analytics; admin sign-in", "SQL, HTTP")
+Rel(tenantDomain, platformSupabase, "Registry, settings, authorization", "SQL")
+Rel(dataService, platformSupabase, "Models, versions, ledger", "SQL")
+Rel(controlPlane, tenantInstances, "Tenant setup", "HTTP")
+Rel(tenantDomain, tenantInstances, "Tenant sign-in, users, files", "HTTP, SQL")
+Rel(dataService, tenantInstances, "Records, token checks", "SQL, HTTP")
+UpdateRelStyle(edgeRouter, tenantDomain, $offsetY="-45")
+UpdateRelStyle(tenantDomain, platformSupabase, $offsetX="-60", $offsetY="-50")
+UpdateRelStyle(dataService, controlPlane, $offsetX="110", $offsetY="40")
+UpdateRelStyle(controlPlane, tenantInstances, $offsetX="-20", $offsetY="80")
+UpdateRelStyle(dataService, tenantInstances, $offsetX="-75", $offsetY="55")
+UpdateRelStyle(dataService, platformSupabase, $offsetX="90", $offsetY="25")
+UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")` },
+{ origin: 'ARCHITECTURE.md › Containers › Provisioning tenant instances', variant: 'Provisioning', text: `C4Container
+title Containers of Dataris: provisioning tenant instances
+Person(platformAdmin, "Platform administrator", "Requests and approves instance changes")
+System_Boundary(dataris, "Dataris") {
+  Container(controlPlane, "Control Plane", "NestJS", "Queues instance operations")
+  Container(instanceWorker, "Instance worker", "NestJS", "Claims operations; runs OpenTofu in short-lived executor containers")
+  Container(dockerAccessProxy, "Docker access proxy", "Node.js", "The only holder of the Docker socket; mutual TLS")
+  ContainerDb(platformSupabase, "Platform Supabase", "PostgreSQL, GoTrue", "Instance operations and their outcomes")
+  Container(secretsStore, "Secrets store", "OpenBao", "Instance credentials; server target only")
+  ContainerDb(tenantInstances, "Tenant instances", "Supabase per tenant", "One Supabase stack per tenant")
+  Container(tenantDomain, "Tenant Domain", "NestJS", "Connects to tenant instances")
+}
+System_Ext(hostDockerEngine, "Host Docker Engine", "Runs every container, including each tenant instance")
+Rel(platformAdmin, controlPlane, "Creates, approves retirement", "via the admin console")
+Rel(controlPlane, platformSupabase, "Queues operations", "SQL")
+Rel(instanceWorker, platformSupabase, "Claims, records outcomes", "SQL")
+Rel(instanceWorker, dockerAccessProxy, "Runs executor jobs", "Docker API, mTLS")
+Rel(dockerAccessProxy, hostDockerEngine, "Forwards allowed calls", "Docker socket")
+Rel(instanceWorker, tenantInstances, "Creates and retires", "OpenTofu, through the proxy")
+Rel(instanceWorker, secretsStore, "Publishes credentials")
+Rel(controlPlane, secretsStore, "Reads credentials")
+Rel(tenantDomain, secretsStore, "Reads credentials")
+UpdateRelStyle(instanceWorker, dockerAccessProxy, $offsetY="-70")
+UpdateRelStyle(controlPlane, secretsStore, $offsetX="-45", $offsetY="-15")
+UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")` },
+{ origin: 'apps/control-plane/TECHNICAL.md › Components (illustrative)', text: `C4Component
+title Components of the Control Plane
+Container(adminConsole, "Admin console", "Angular 22, CoreUI", "Browser app served at /dashboard/")
+Container(dataService, "Data Service", "NestJS", "Asks for tenant context")
+Container_Boundary(controlPlane, "Control Plane") {
+  Component(adminAuth, "Admin auth", "NestJS module", "Admin login via Supabase Auth, RBAC guards")
+  Component(tenants, "Tenants", "NestJS module", "Tenant CRUD, lifecycle, quotas")
+  Component(instances, "Instances", "NestJS module", "Instance spawning, reconciliation, deletion")
+  Component(registry, "Registry", "NestJS module", "Data access layer for all control-plane tables")
+  Component(providers, "Providers", "NestJS module", "Provisions Supabase projects, schemas, buckets")
+  Component(messageHandler, "Message handler", "NestJS module", "TCP patterns: get instance, get tenant")
+}
+ContainerDb(platformSupabase, "Platform Supabase", "PostgreSQL, GoTrue", "Registry and admin accounts")
+Rel(adminConsole, adminAuth, "Signs in", "JSON/HTTP")
+Rel(adminConsole, tenants, "Manages tenants", "JSON/HTTP")
+Rel(tenants, instances, "Requests instances")
+Rel(tenants, registry, "Reads and writes")
+Rel(instances, registry, "Queues operations")
+Rel(instances, providers, "Provisions")
+Rel(dataService, messageHandler, "Tenant context", "TCP :4002")
+Rel(messageHandler, registry, "Looks up tenants")
+Rel(registry, platformSupabase, "Queries", "SQL")
+Rel(adminAuth, platformSupabase, "Admin sign-in", "HTTP")
+UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")` },
+{ origin: 'docs/hld/data-service/README.md › Components (illustrative)', text: `C4Component
+title Components of the Data Service
+Container(tenantDomain, "Tenant Domain", "NestJS", "Model authoring facade")
+Container(controlPlane, "Control Plane", "NestJS", "Resolves tenant context")
+Container_Boundary(dataService, "Data Service") {
+  Component(lifecycle, "Lifecycle", "NestJS module", "Draft, publish, deprecate, sunset; TCP handler for the facade")
+  Component(modelRegistry, "Model registry", "NestJS module", "Abstract model CRUD, JSON Schema validation, quotas")
+  Component(adapterRegistry, "Adapter registry", "NestJS module", "Routes each entity to its storage category")
+  Component(storageCategoryC, "Storage Category C", "libs/storage-category-c", "JSON lens compiler, index planner, read/write engine")
+  Component(dataServiceAuth, "Data plane auth", "NestJS module", "Verifies tenant JWTs directly")
+}
+ContainerDb(platformSupabase, "Platform Supabase", "PostgreSQL", "Models, versions, publish ledger")
+ContainerDb(tenantInstances, "Tenant instances", "Supabase per tenant", "d_<slug> record tables")
+Rel(tenantDomain, lifecycle, "Model authoring", "TCP :4006")
+Rel(lifecycle, modelRegistry, "Reads drafts and versions")
+Rel(lifecycle, adapterRegistry, "Publishes through")
+Rel(adapterRegistry, storageCategoryC, "Routes Category C entities")
+Rel(modelRegistry, controlPlane, "Tenant context", "TCP :4002")
+Rel(modelRegistry, platformSupabase, "Models and ledger", "SQL")
+Rel(storageCategoryC, tenantInstances, "Reads and writes records", "SQL")
+UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")` },
+];
+
+/*
+ * ---------------------------------------------------------------------------
+ * INPUT 2: content collected from @realdocs:c4 markers. Each entry shows the
+ * marker that would produce it. Excerpts are real text from dataris-spec.
+ * ---------------------------------------------------------------------------
+ */
+const wiki = 'file:///home/danb/Projects/dataris-spec/dist/realdocs/';
+const markers = [
+  { target: 'dataris', tab: 'docs', title: 'How the containers work together',
+    source: 'ARCHITECTURE.md', marker: '## How the containers work together\n<!-- @realdocs:c4 dataris -->',
+    href: wiki + 'pages/ARCHITECTURE.html#how-the-containers-work-together',
+    html: `<p><strong>Between services.</strong> Tenant Domain reads the registry directly from the platform database, sends model authoring to the Data Service over Nest TCP and relays record and OpenAPI requests over HTTP with the caller's token. The Data Service resolves tenant context from the Control Plane over Nest TCP rather than reading registry tables (ADR 0006).</p>
+           <p><strong>Instances.</strong> The Control Plane only queues instance operations. The instance worker claims them from the platform database, runs OpenTofu in executor containers through the Docker access proxy, and publishes each instance's credentials.</p>` },
+  { target: 'dataris', tab: 'docs', title: 'ADR 0001: Domain Architecture — Control Plane, TenantOps, Data',
+    source: 'docs/adr/0001-domain-architecture-control-plane-tenantops-data.md', marker: '<!-- @realdocs:c4 dataris -->  (top of file)',
+    href: wiki + 'pages/docs/adr/0001-domain-architecture-control-plane-tenantops-data.html',
+    html: `<p class="muted">Status: Accepted</p><p>Adopt a three-layer domain architecture: <strong>Control Plane</strong> for tenant lifecycle, registry, provisioning, credentials, quotas and routing metadata…</p>` },
+
+  { target: 'dataris.controlPlane', tab: 'docs', title: 'Control Plane modules',
+    source: 'ARCHITECTURE.md', marker: '## Control Plane (`apps/control-plane/`)\n<!-- @realdocs:c4 dataris.controlPlane -->',
+    href: wiki + 'pages/ARCHITECTURE.html#control-plane-appscontrol-plane--admin--lifecycle-management',
+    html: `<table><tr><th>Module</th><th>Purpose</th></tr>
+      <tr><td>SupabaseModule</td><td>Supabase client, Postgres pool, Mgmt API config</td></tr>
+      <tr><td>AdminAuthModule</td><td>Admin login via Supabase Auth, RBAC guards</td></tr>
+      <tr><td>RegistryModule</td><td>Data access layer (all control-plane tables)</td></tr>
+      <tr><td>ProvidersModule</td><td>Infrastructure provisioning</td></tr>
+      <tr><td>TenantsModule</td><td>Tenant CRUD, lifecycle, quotas</td></tr>
+      <tr><td>InstancesModule</td><td>Instance spawning, reconciliation, deletion</td></tr>
+      <tr><td>MessageHandlerModule</td><td>TCP message patterns</td></tr>
+      <tr><td>AdminUiModule</td><td>Serves the Angular admin console at /dashboard/</td></tr></table>` },
+  { target: 'dataris.controlPlane', tab: 'docs', title: 'ADR 0012: Adopt Drizzle ORM for the Control Plane',
+    source: 'docs/adr/0012-control-plane-orm-selection.md', marker: '<!-- @realdocs:c4 dataris.controlPlane -->  (top of file)',
+    href: wiki + 'pages/docs/adr/0012-control-plane-orm-selection.html',
+    html: `<p class="muted">Status: Proposed</p><p>Adopt <strong>Drizzle ORM</strong> as the data access layer for the control plane, used as a type-safe query builder with the existing <code>postgres</code> driver. Retain the Supabase CLI for migration management.</p>` },
+  { target: 'dataris.controlPlane', tab: 'docs', title: 'ADR 0016: Multi-Server Control Plane Deployment',
+    source: 'docs/adr/0016-multi-server-control-plane-tenant-placement.md', marker: '<!-- @realdocs:c4 dataris.controlPlane -->  (top of file)',
+    href: wiki + 'pages/docs/adr/0016-multi-server-control-plane-tenant-placement.html',
+    html: `<p class="muted">Status: Proposed</p><p>Adopt server-bound Control Plane instances with a Postgres-backed server registry and admin-selected tenant placement.</p>` },
+  { target: 'dataris.controlPlane', tab: 'diagrams', title: 'Control Plane service and provider adapters',
+    source: 'docs/hld/control-plane-supabase-wrapper/README.md', marker: '```mermaid\n%% @realdocs:c4 dataris.controlPlane\nflowchart TB',
+    href: wiki + 'pages/docs/hld/control-plane-supabase-wrapper/README.html',
+    mermaid: `flowchart TB
+    subgraph ControlPlane["Control Plane Service"]
+        API["Control Plane API"]
+        Registry["Tenant Registry"]
+        ProviderManager["Provider Manager"]
+        CredentialStore["Credential Store"]
+        EventPublisher["Event Publisher"]
+        API --> Registry
+        API --> ProviderManager
+        ProviderManager --> CredentialStore
+        ProviderManager --> EventPublisher
+        Registry --> CredentialStore
+    end
+    subgraph Adapters["Provider Adapters"]
+        SupabaseAdapter["Supabase Adapter"]
+        FutureAdapter["Future Adapters (Neon, RDS, etc.)"]
+    end
+    ProviderManager --> SupabaseAdapter
+    ProviderManager -.-> FutureAdapter` },
+  { target: 'dataris.controlPlane', tab: 'code', title: 'control-plane.module.ts', source: 'apps/control-plane/src/control-plane.module.ts',
+    marker: '/** @realdocs:file …\n * @realdocs:c4 dataris.controlPlane */', href: wiki + 'modules/apps/control-plane/src/control-plane.module.ts.html',
+    html: `<p>Root Nest module: imports the Supabase, admin auth, registry, providers, tenants, instances, message handler and admin UI modules.</p>` },
+  { target: 'dataris.controlPlane', tab: 'code', title: 'main.ts', source: 'apps/control-plane/src/main.ts',
+    marker: '/** @realdocs:file …\n * @realdocs:c4 dataris.controlPlane */', href: wiki + 'modules/apps/control-plane/src/main.ts.html',
+    html: `<p>Boots the HTTP API on :3002 and the TCP microservice on :4002.</p>` },
+
+  { target: 'dataris.tenantDomain', tab: 'docs', title: 'Tenant Domain modules',
+    source: 'ARCHITECTURE.md', marker: '## Tenant Domain (`apps/tenant-domain/`, port 3005)\n<!-- @realdocs:c4 dataris.tenantDomain -->',
+    href: wiki + 'pages/ARCHITECTURE.html',
+    html: `<table><tr><th>Module</th><th>Purpose</th></tr>
+      <tr><td>TenantAuthModule</td><td>Tenant-scoped JWT auth, role/permission guards</td></tr>
+      <tr><td>Users / Roles / Settings</td><td>Tenant user, role, and settings management</td></tr>
+      <tr><td>ResourcesModule</td><td>Façade forwarding model-authoring calls to the Data Service over TCP</td></tr>
+      <tr><td>ChangelogModule</td><td>Tenant-facing audit trail of authoring actions</td></tr>
+      <tr><td>DashboardModule</td><td>Serves the Angular tenant portal at &lt;slug&gt;.&lt;base&gt;</td></tr></table>` },
+  { target: 'dataris.tenantDomain', tab: 'docs', title: 'ADR 0015: Tenant-Specific URL Endpoint Provisioning',
+    source: 'docs/adr/0015-tenant-url-endpoint-provisioning.md', marker: '<!-- @realdocs:c4 dataris.tenantDomain -->  (top of file)',
+    href: wiki + 'pages/docs/adr/0015-tenant-url-endpoint-provisioning.html',
+    html: `<p class="muted">Status: Accepted</p><p>Adopt subdomain-based routing in all environments: <code>https://{tenant-slug}.dataris.xyz</code> in production, <code>…stage.dataris.xyz</code> in staging, <code>…local.dataris.xyz</code> locally.</p>` },
+  { target: 'dataris.tenantDomain', tab: 'code', title: 'tenant-domain-app.module.ts', source: 'apps/tenant-domain/src/tenant-domain-app.module.ts',
+    marker: '/** @realdocs:file …\n * @realdocs:c4 dataris.tenantDomain */', href: wiki + 'modules/apps/tenant-domain/src/tenant-domain-app.module.ts.html',
+    html: `<p>Root Nest module for the tenant-facing API and portal.</p>` },
+
+  { target: 'dataris.edgeRouter', tab: 'docs', title: 'Edge routing rules',
+    source: 'ARCHITECTURE.md', marker: '## Edge (Traefik, port 80)\n<!-- @realdocs:c4 dataris.edgeRouter -->',
+    href: wiki + 'pages/ARCHITECTURE.html#edge-traefik-port-80',
+    html: `<table><tr><th>Router</th><th>Rule</th><th>Service</th></tr>
+      <tr><td>controlplane</td><td>Host(controlplane.&lt;base&gt;), 300</td><td>Control Plane :3002</td></tr>
+      <tr><td>data-service</td><td>PathPrefix(/api/data), 200</td><td>Data Service :3006</td></tr>
+      <tr><td>tenant-portal-root</td><td>Host(&lt;base&gt;), 100</td><td>Tenant Domain :3005</td></tr>
+      <tr><td>tenant-dashboard</td><td>HostRegexp(&lt;slug&gt;.&lt;base&gt;), 1</td><td>Tenant Domain :3005</td></tr></table>` },
+
+  { target: 'dataris.dataService', tab: 'docs', title: 'Data Service overview',
+    source: 'ARCHITECTURE.md', marker: '## Data Service (`apps/data-service/` …)\n<!-- @realdocs:c4 dataris.dataService -->',
+    href: wiki + 'pages/ARCHITECTURE.html',
+    html: `<p>The storage adapter compiler: tenants author a database-agnostic abstract entity model; <code>PostgresJsonAdapterService</code> (Storage Category C) compiles it to one <code>d_&lt;slug&gt;</code> table per entity — six fixed columns, one <code>payload jsonb</code> — plus a compiled JSON lens per live model version.</p>` },
+  { target: 'dataris.dataService', tab: 'docs', title: 'ADR 0018: Tenant-Defined Data Modelling',
+    source: 'docs/adr/0018-tenant-defined-data-modelling.md', marker: '<!-- @realdocs:c4 dataris.dataService -->  (top of file)',
+    href: wiki + 'pages/docs/adr/0018-tenant-defined-data-modelling.html',
+    html: `<p class="muted">Status: Superseded</p><p>Build the capability in the Data Service (a new <code>apps/data-service/</code>, port 3006), structured in two layers…</p>` },
+  { target: 'dataris.dataService', tab: 'diagrams', title: 'Model publish sequence',
+    source: 'docs/hld/data-service/README.md', marker: '```mermaid\n%% @realdocs:c4 dataris.dataService\nsequenceDiagram',
+    href: wiki + 'pages/docs/hld/data-service/README.html',
+    mermaid: `sequenceDiagram
+    participant M as MODELER (via façade)
+    participant DS as Data Service
+    participant DB as Tenant Postgres
+    participant BW as Backfill worker
+    M->>DS: POST .../versions (draft) → PATCH edits
+    M->>DS: POST .../{v}/plan (dry run)
+    DS-->>M: ops · lint · Tier 1/2/3 report
+    M->>DS: POST .../{v}/publish
+    DS->>DS: per-tenant advisory lock
+    DS->>DB: BEGIN, expand-only DDL, views and triggers
+    DS->>DB: COMMIT
+    DS->>DS: ledger row · status → published
+    DS-)BW: backfill job
+    BW->>DB: chunked UPDATE, then VALIDATE CONSTRAINT` },
+  { target: 'dataris.dataService', tab: 'code', title: 'data-service.module.ts', source: 'apps/data-service/src/data-service.module.ts',
+    marker: '/** @realdocs:file …\n * @realdocs:c4 dataris.dataService */', href: wiki + 'modules/apps/data-service/src/data-service.module.ts.html',
+    html: `<p>Root Nest module: model registry, lifecycle, adapter registry and data-plane auth.</p>` },
+
+  { target: 'dataris.dataService.storageCategoryC', tab: 'docs', title: 'ADR 0021: Storage Category C — JSONB canonical store',
+    source: 'docs/adr/0021-storage-category-c-jsonb-canonical-store.md', marker: '<!-- @realdocs:c4 dataris.dataService.storageCategoryC -->  (top of file)',
+    href: wiki + 'pages/docs/adr/0021-storage-category-c-jsonb-canonical-store.html',
+    html: `<p class="muted">Status: Accepted</p><p>Build Storage Category C as a third <code>IModelExecutionAdapter</code> implementation, <code>PostgresJsonAdapter</code>…</p>` },
+  { target: 'dataris.dataService.lifecycle', tab: 'diagrams', title: 'Model publish sequence',
+    source: 'docs/hld/data-service/README.md', marker: '```mermaid\n%% @realdocs:c4 dataris.dataService.lifecycle\nsequenceDiagram',
+    href: wiki + 'pages/docs/hld/data-service/README.html', mermaidRef: 'dataris.dataService' },
+
+  { target: 'dataris.instanceWorker', tab: 'code', title: 'worker.module.ts', source: 'apps/instance-worker/src/worker.module.ts',
+    marker: '/** @realdocs:file …\n * @realdocs:c4 dataris.instanceWorker */', href: wiki + 'modules/apps/instance-worker/src/worker.module.ts.html',
+    html: `<p>Claims queued instance operations and runs OpenTofu executors through the Docker access proxy.</p>` },
+];
+
+/* ---------------------------------------------------------------------------
+ * Model: parse the C4 blocks, link levels through boundary aliases, and give
+ * every element a dotted path. RealDocs would do this at build time.
+ * ------------------------------------------------------------------------- */
+const elementKinds = /^(Person(?:_Ext)?|System(?:Db|Queue)?(?:_Ext)?|Container(?:Db|Queue)?(?:_Ext)?|Component(?:Db|Queue)?(?:_Ext)?)$/;
+function splitArgs(text) {
+  const out = []; let cur = '', quoted = false;
+  for (const ch of text) {
+    if (ch === '"') { quoted = !quoted; continue; }
+    if (ch === ',' && !quoted) { out.push(cur.trim()); cur = ''; continue; }
+    cur += ch;
+  }
+  out.push(cur.trim());
+  return out;
+}
+function parse(source) {
+  const lines = source.text.split('\n');
+  const view = { ...source, type: lines[0].trim(), title: '', boundary: null, boundaryKind: null, boundaryLabel: '',
+    elements: new Map(), inside: new Set(), rels: [], layout: null, relStyles: [] };
+  let depth = 0;
+  for (const raw of lines.slice(1)) {
+    const line = raw.trim();
+    if (line.startsWith('title ')) { view.title = line.slice(6); continue; }
+    if (line === '}') { depth--; continue; }
+    const call = /^(\w+)\((.*)\)\s*(\{)?$/.exec(line);
+    if (!call) continue;
+    const [, fn, argText, open] = call;
+    const args = splitArgs(argText);
+    if (open) { // boundary
+      if (!view.boundary) Object.assign(view, { boundary: args[0], boundaryKind: fn, boundaryLabel: args[1] });
+      depth++; continue;
+    }
+    if (elementKinds.test(fn)) {
+      const tech = /^(Container|Component)/.test(fn) ? args[2] : '';
+      const descr = /^(Container|Component)/.test(fn) ? args[3] : args[2];
+      view.elements.set(args[0], { alias: args[0], fn, label: args[1], tech, descr, line: raw.trim() });
+      if (depth > 0) view.inside.add(args[0]);
+    } else if (/^(Bi)?Rel/.test(fn)) {
+      view.rels.push({ fn, from: args[0], to: args[1], label: args[2] || '', tech: args[3] || '', line: raw.trim() });
+    } else if (fn === 'UpdateLayoutConfig') view.layout = line;
+    else if (fn === 'UpdateRelStyle') view.relStyles.push(line);
+  }
+  return view;
+}
+
+const views = sources.map(parse);
+const levels = new Map(); // key: boundary alias ('' = context)
+for (const view of views) {
+  const key = view.boundary ?? '';
+  if (!levels.has(key)) levels.set(key, { key, views: [] });
+  levels.get(key).views.push(view);
+}
+const elements = new Map(); // alias -> element with path
+function register(el, path) {
+  if (elements.has(el.alias)) {
+    const known = elements.get(el.alias);
+    known.descriptions.add(el.descr);
+    if (!known.tech && el.tech) known.tech = el.tech;
+    return known;
+  }
+  const entry = { ...el, path, descriptions: new Set([el.descr]) };
+  elements.set(el.alias, entry);
+  return entry;
+}
+for (const view of levels.get('')?.views ?? []) for (const el of view.elements.values()) register(el, el.alias);
+let pending = [...levels.values()].filter(level => level.key);
+while (pending.length) {
+  const ready = pending.filter(level => elements.has(level.key));
+  if (!ready.length) break;
+  for (const level of ready) {
+    const parent = elements.get(level.key);
+    level.path = parent.path;
+    for (const view of level.views) for (const el of view.elements.values())
+      if (view.inside.has(el.alias)) register(el, `${parent.path}.${el.alias}`);
+    for (const view of level.views) for (const el of view.elements.values())
+      if (!view.inside.has(el.alias)) register(el, el.alias);
+  }
+  pending = pending.filter(level => !ready.includes(level));
+}
+levels.get('').path = '';
+for (const el of elements.values()) el.hasChildren = levels.has(el.alias);
+
+function levelSource(level, variant) {
+  const chosen = variant == null ? level.views : [level.views[variant]];
+  const first = chosen[0];
+  if (chosen.length === 1) return first.text;
+  const outside = new Map(), inside = new Map(), rels = new Map();
+  for (const view of chosen) {
+    for (const el of view.elements.values()) (view.inside.has(el.alias) ? inside : outside).set(el.alias, el.line);
+    for (const rel of view.rels) if (!rels.has(rel.from + '>' + rel.to)) rels.set(rel.from + '>' + rel.to, rel.line);
+  }
+  for (const alias of inside.keys()) outside.delete(alias);
+  const title = first.title.split(':')[0] + (chosen.length > 1 ? ' (all views merged)' : '');
+  return [first.type, `title ${title}`, ...outside.values(),
+    `${first.boundaryKind}(${first.boundary}, "${first.boundaryLabel}") {`, ...[...inside.values()].map(l => '  ' + l), '}',
+    ...rels.values(), first.layout ?? ''].join('\n');
+}
+
+/* ---------------------------------------------------------------------------
+ * Rendering
+ * ------------------------------------------------------------------------- */
+const $ = sel => document.querySelector(sel);
+const css = getComputedStyle(document.documentElement);
+const color = name => css.getPropertyValue('--wiki-' + name).trim();
+mermaid.initialize({
+  startOnLoad: false, securityLevel: 'strict', theme: 'base',
+  themeVariables: { darkMode: true, background: color('surface'), primaryColor: '#284137', primaryTextColor: color('ink'),
+    primaryBorderColor: '#698d7e', lineColor: color('muted'), textColor: color('ink'), secondaryColor: '#2c3a4c',
+    tertiaryColor: color('surface'), edgeLabelBackground: color('surface'), fontFamily: 'system-ui, sans-serif',
+    actorBkg: '#284137', actorBorder: '#698d7e', actorTextColor: color('ink'), signalColor: color('muted'), signalTextColor: color('ink'),
+    noteBkgColor: '#2c3a4c', noteTextColor: color('ink') },
+  c4: { person_bg_color: '#285b4a', person_border_color: '#619b86', system_bg_color: '#315a72', system_border_color: '#7099af',
+    container_bg_color: '#315a72', container_border_color: '#7099af', component_bg_color: '#2e5144', component_border_color: '#619b86' },
+});
+
+let renderCount = 0;
+const state = { stack: [''], variant: null, selected: null, tab: 'overview' };
+const canvas = $('.canvas');
+const levelNames = { C4Context: 'Level 1 · System context', C4Container: 'Level 2 · Containers', C4Component: 'Level 3 · Components' };
+const currentLevel = () => levels.get(state.stack.at(-1));
+// A level built from several authored views opens on the first one; "All merged" is a toggle.
+const defaultVariant = () => currentLevel().views.length > 1 ? 0 : null;
+// Every element has one place in the hierarchy: its dotted path. Navigation follows that path,
+// never the route the reader took, so a peer that links back cannot grow the breadcrumb.
+const stackFor = alias => ['', ...elements.get(alias).path.split('.')];
+const isDescendant = alias => state.stack.every((key, i) => stackFor(alias)[i] === key);
+const nodeFor = alias => canvas.querySelector(`.c4-shape[data-alias="${CSS.escape(alias)}"]`);
+const shapeRect = node => node.querySelector('rect.label-container, .label-container rect');
+
+function setStroke(node, on) {
+  const rect = shapeRect(node);
+  if (!rect) return;
+  if (on) { rect.style.setProperty('stroke', color('accent'), 'important'); rect.style.setProperty('stroke-width', '4', 'important'); }
+  else { rect.style.removeProperty('stroke-width'); rect.style.setProperty('stroke', rect.dataset.stroke, 'important'); }
+}
+
+async function renderLevel() {
+  const level = currentLevel();
+  const id = `c4v${++renderCount}`;
+  const { svg } = await mermaid.render(id, levelSource(level, state.variant));
+  canvas.innerHTML = svg;
+  for (const node of canvas.querySelectorAll('.c4-shape')) {
+    const alias = node.id.slice(id.length + 1);
+    const el = elements.get(alias);
+    node.dataset.alias = alias;
+    node.setAttribute('tabindex', '0');
+    node.setAttribute('role', 'button');
+    const down = el?.hasChildren && isDescendant(alias);
+    node.setAttribute('aria-label', `${el?.label ?? alias}${el?.hasChildren ? (down ? ', can zoom in' : ', can go to its own view') : ''}`);
+    const rect = shapeRect(node);
+    if (rect) rect.dataset.stroke = rect.style.getPropertyValue('stroke');
+    if (el?.hasChildren && rect) {
+      node.classList.add('has-children');
+      const x = +rect.getAttribute('x') + +rect.getAttribute('width') - 16, y = +rect.getAttribute('y') + 16;
+      node.insertAdjacentHTML('beforeend', `<g class="zoom-badge" transform="translate(${x} ${y})">
+        <circle r="10" fill="${color('page')}" stroke="${color('accent')}" stroke-width="1.5"/>
+        ${down ? `<path d="M-5 0H5M0 -5V5" stroke="${color('accent')}" stroke-width="2"/>`
+               : `<path d="M-4 4L4 -4M-2 -4H4V2" stroke="${color('accent')}" stroke-width="1.8" fill="none"/>`}</g>`);
+    }
+    if (alias === state.selected) setStroke(node, true);
+  }
+  renderChrome();
+}
+
+function renderChrome() {
+  const level = currentLevel();
+  const crumbs = state.stack.map((key, index) => {
+    const label = key ? elements.get(key).label : 'Context';
+    const last = index === state.stack.length - 1;
+    return `${index ? '<span class="sep">›</span>' : ''}<button type="button" data-depth="${index}" ${last ? 'aria-current="page"' : ''}>${label}</button>`;
+  });
+  $('nav.crumbs').innerHTML = crumbs.join('');
+  saveHash();
+  $('.level').textContent = levelNames[level.views[0].type] ?? level.views[0].type;
+  const variants = $('.variants');
+  variants.innerHTML = level.views.length > 1 ? [
+    `<button type="button" data-variant="" aria-pressed="${state.variant == null}">All merged</button>`,
+    ...level.views.map((view, i) => `<button type="button" data-variant="${i}" aria-pressed="${state.variant === i}">${view.variant ?? view.title}</button>`),
+  ].join('') : '';
+}
+
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+let busy = false;
+async function transition(next, { into, outOf, slide } = {}) {
+  if (busy) return; busy = true;
+  // A level change closes the panel; the selected box is usually not on the next level.
+  if (state.selected) closePanel({ restoreFocus: false });
+  const stage = $('.stage').getBoundingClientRect();
+  const focus = into && nodeFor(into);
+  if (slide) {
+    canvas.style.transformOrigin = 'center'; canvas.style.transform = 'translateX(-12%)';
+  } else if (focus) {
+    const r = focus.getBoundingClientRect();
+    canvas.style.transformOrigin = `${r.left + r.width / 2 - stage.left}px ${r.top + r.height / 2 - stage.top}px`;
+    const scale = Math.min(stage.width / r.width, stage.height / r.height) * .8;
+    canvas.style.transform = `scale(${scale})`;
+  } else {
+    canvas.style.transformOrigin = 'center'; canvas.style.transform = 'scale(.55)';
+  }
+  canvas.style.opacity = '0';
+  await wait(380);
+  next();
+  state.variant = defaultVariant();
+  await renderLevel();
+  canvas.classList.add('instant');
+  const back = outOf && nodeFor(outOf);
+  if (slide) {
+    canvas.style.transformOrigin = 'center'; canvas.style.transform = 'translateX(12%)';
+  } else if (back) {
+    const r = back.getBoundingClientRect();
+    canvas.style.transformOrigin = `${r.left + r.width / 2 - stage.left}px ${r.top + r.height / 2 - stage.top}px`;
+    canvas.style.transform = `scale(${Math.min(stage.width / r.width, stage.height / r.height) * .8})`;
+  } else {
+    canvas.style.transformOrigin = 'center'; canvas.style.transform = 'scale(.55)';
+  }
+  canvas.getBoundingClientRect();
+  canvas.classList.remove('instant');
+  canvas.style.transform = 'none'; canvas.style.opacity = '1';
+  await wait(380);
+  busy = false;
+}
+function zoomIn(alias) {
+  if (!elements.get(alias)?.hasChildren) return;
+  const target = stackFor(alias);
+  if (isDescendant(alias)) transition(() => { state.stack = target; }, { into: alias });
+  else transition(() => { state.stack = target; }, { slide: true });
+}
+function zoomOut(depth = state.stack.length - 2) {
+  if (depth < 0 || depth >= state.stack.length - 1) return;
+  const from = state.stack[depth + 1];
+  transition(() => { state.stack = state.stack.slice(0, depth + 1); }, { outOf: from });
+}
+
+/* ---------------------------------------------------------------------------
+ * Panel
+ * ------------------------------------------------------------------------- */
+const panel = $('aside.panel');
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const tabs = [['overview', 'Overview'], ['diagrams', 'Diagrams'], ['docs', 'Docs'], ['code', 'Code']];
+
+function select(alias) {
+  if (state.selected) { const old = nodeFor(state.selected); if (old) setStroke(old, false); }
+  state.selected = alias;
+  const node = nodeFor(alias); if (node) setStroke(node, true);
+  state.tab = 'overview';
+  renderPanel();
+  panel.classList.add('open');
+}
+function closePanel({ restoreFocus = true } = {}) {
+  if (state.selected) { const old = nodeFor(state.selected); if (old) setStroke(old, false); if (restoreFocus) old?.focus(); }
+  state.selected = null;
+  panel.classList.remove('open');
+  saveHash();
+}
+
+function renderPanel() {
+  const el = elements.get(state.selected);
+  const items = markers.filter(m => m.target === el.path);
+  const counts = Object.fromEntries(tabs.map(([key]) => [key, items.filter(m => m.tab === key).length]));
+  const kind = el.fn.replace(/_Ext$/, ' (external)').replace(/Db/, ' database').replace(/Queue/, ' queue');
+  panel.querySelector('.panel-inner').innerHTML = `
+    <div class="panel-head">
+      <div class="row"><h2>${esc(el.label)}</h2><button type="button" data-action="close" aria-label="Close panel">✕</button></div>
+      <div class="kind">${esc(kind)}${el.tech ? ' · ' + esc(el.tech) : ''}</div>
+      <div class="marker">Marker <code>@realdocs:c4 ${esc(el.path)}</code><button type="button" data-action="copy">Copy</button></div>
+      ${el.hasChildren ? `<div class="panel-actions"><button type="button" class="primary" data-action="zoom">${isDescendant(el.alias) ? 'Zoom in to' : 'Go to'} ${esc(el.label)} ${levelNames[levels.get(el.alias).views[0].type]?.split(' · ')[1].toLowerCase() ?? 'details'} ${isDescendant(el.alias) ? '⊕' : '↗'}</button></div>` : ''}
+    </div>
+    <div role="tablist" aria-label="Element information">
+      ${tabs.filter(([key]) => key === 'overview' || counts[key]).map(([key, label]) => `<button type="button" role="tab" id="tab-${key}" aria-controls="tabpanel" aria-selected="${state.tab === key}" data-tab="${key}">${label}${key !== 'overview' ? `<span class="count">${counts[key]}</span>` : ''}</button>`).join('')}
+    </div>
+    <div role="tabpanel" id="tabpanel" aria-labelledby="tab-${state.tab}" tabindex="0"></div>`;
+  const body = panel.querySelector('[role="tabpanel"]');
+  saveHash();
+  if (state.tab === 'overview') body.innerHTML = overview(el, items);
+  else {
+    const list = items.filter(m => m.tab === state.tab);
+    body.innerHTML = list.map((m, i) => `
+      <article class="item">
+        <div class="item-head"><strong>${esc(m.title)}</strong>
+          ${m.tab === 'diagrams' ? `<button type="button" data-enlarge="${i}">Enlarge</button>` : ''}
+          <a href="${esc(m.href)}" target="_blank" rel="noopener">Open in wiki ↗</a></div>
+        <div class="source" title="Marker that puts this here:\n${esc(m.marker)}">${esc(m.source)}</div>
+        <div class="body ${m.tab === 'diagrams' ? 'diagram' : ''}" data-index="${i}">${m.html ?? '<span class="muted">Rendering…</span>'}</div>
+      </article>`).join('');
+    if (state.tab === 'diagrams') list.forEach(async (m, i) => {
+      const text = m.mermaid ?? markers.find(x => x.target === m.mermaidRef && x.mermaid)?.mermaid;
+      try { const { svg } = await mermaid.render(`pd${++renderCount}`, text); body.querySelector(`[data-index="${i}"]`).innerHTML = svg; }
+      catch (error) { document.getElementById(`dpd${renderCount}`)?.remove(); body.querySelector(`[data-index="${i}"]`).textContent = 'Could not render this diagram.'; }
+    });
+    body.querySelectorAll('[data-enlarge]').forEach(button => button.addEventListener('click', () => {
+      const m = list[+button.dataset.enlarge];
+      const dlg = $('#enlarge');
+      dlg.querySelector('strong').textContent = m.title;
+      dlg.querySelector('.dlg-body').innerHTML = body.querySelector(`[data-index="${button.dataset.enlarge}"]`).innerHTML;
+      dlg.showModal();
+    }));
+  }
+}
+
+function overview(el, items) {
+  // Relationships come from the element's own level, even after zooming into it.
+  const homeKey = el.path.split('.').slice(-2, -1)[0] ?? '';
+  const level = levels.get(homeKey);
+  const rels = new Map();
+  const chosen = state.variant == null || level !== currentLevel() ? level.views : [level.views[state.variant]];
+  for (const view of chosen) for (const rel of view.rels) rels.set(rel.from + '>' + rel.to, rel);
+  const out = [...rels.values()].filter(r => r.from === el.alias);
+  const inc = [...rels.values()].filter(r => r.to === el.alias);
+  const link = alias => `<button type="button" data-goto="${esc(alias)}">${esc(elements.get(alias)?.label ?? alias)}</button>`;
+  const rel = (r, other) => `<li>${link(other)} — ${esc(r.label)}${r.tech ? ` <span class="muted">[${esc(r.tech)}]</span>` : ''}</li>`;
+  const inViews = views.filter(v => v.elements.has(el.alias));
+  return `
+    <dl class="facts">
+      <dt>Description</dt><dd>${[...el.descriptions].filter(Boolean).map(esc).join('<br><span class="muted">or: </span>')}</dd>
+      ${el.tech ? `<dt>Technology</dt><dd>${esc(el.tech)}</dd>` : ''}
+      <dt>Marked items</dt><dd>${items.length ? `${items.length} (${tabs.slice(1).map(([k, l]) => `${items.filter(m => m.tab === k).length} ${l.toLowerCase()}`).join(', ')})` : '<span class="empty">None yet. Add the marker above to a guide, section, diagram or file.</span>'}</dd>
+    </dl>
+    <h3>Calls</h3>${out.length ? `<ul class="rels">${out.map(r => rel(r, r.to)).join('')}</ul>` : '<p class="empty">Nothing in this view.</p>'}
+    <h3>Called by</h3>${inc.length ? `<ul class="rels">${inc.map(r => rel(r, r.from)).join('')}</ul>` : '<p class="empty">Nothing in this view.</p>'}
+    <h3>Appears in</h3><ul class="rels">${inViews.map(v => `<li>${esc(v.title)}<br><span class="muted">${esc(v.origin)}</span></li>`).join('')}</ul>`;
+}
+
+/* ---------------------------------------------------------------------------
+ * Events
+ * ------------------------------------------------------------------------- */
+canvas.addEventListener('click', event => {
+  const node = event.target.closest('.c4-shape');
+  if (node) select(node.dataset.alias); else closePanel();
+});
+canvas.addEventListener('dblclick', event => {
+  const node = event.target.closest('.c4-shape');
+  if (node) zoomIn(node.dataset.alias);
+});
+canvas.addEventListener('keydown', event => {
+  const node = event.target.closest('.c4-shape');
+  if (!node) return;
+  if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); select(node.dataset.alias); }
+  if (event.key === '+' ) zoomIn(node.dataset.alias);
+});
+let wheelBudget = 0, wheelTimer;
+$('.stage').addEventListener('wheel', event => {
+  event.preventDefault();
+  wheelBudget += event.deltaY;
+  clearTimeout(wheelTimer); wheelTimer = setTimeout(() => { wheelBudget = 0; }, 250);
+  if (busy) return;
+  if (wheelBudget < -120) {
+    wheelBudget = 0;
+    const node = event.target.closest('.c4-shape.has-children');
+    if (node) zoomIn(node.dataset.alias);
+  } else if (wheelBudget > 120) { wheelBudget = 0; zoomOut(); }
+}, { passive: false });
+canvas.addEventListener('mouseover', event => canvas.classList.toggle('zoomable-hover', !!event.target.closest('.has-children')));
+$('nav.crumbs').addEventListener('click', event => {
+  const button = event.target.closest('button[data-depth]');
+  if (button && !button.hasAttribute('aria-current')) zoomOut(+button.dataset.depth);
+});
+$('.variants').addEventListener('click', async event => {
+  const button = event.target.closest('button[data-variant]');
+  if (!button) return;
+  state.variant = button.dataset.variant === '' ? null : +button.dataset.variant;
+  await renderLevel();
+  if (state.selected && panel.classList.contains('open')) renderPanel();
+});
+panel.addEventListener('click', event => {
+  const action = event.target.closest('[data-action]')?.dataset.action;
+  if (action === 'close') closePanel();
+  if (action === 'zoom') { const alias = state.selected; zoomIn(alias); }
+  if (action === 'copy') navigator.clipboard?.writeText(`@realdocs:c4 ${elements.get(state.selected).path}`);
+  const tab = event.target.closest('[data-tab]');
+  if (tab) { state.tab = tab.dataset.tab; renderPanel(); panel.querySelector(`#tab-${state.tab}`).focus(); }
+  const goto = event.target.closest('[data-goto]');
+  if (goto && nodeFor(goto.dataset.goto)) select(goto.dataset.goto);
+});
+$('#enlarge button').addEventListener('click', () => $('#enlarge').close());
+document.addEventListener('keydown', event => {
+  if (event.target.closest('dialog')) return;
+  if (event.key === 'Escape' && panel.classList.contains('open')) closePanel();
+  if (event.key === 'Backspace' && !event.target.closest('input, textarea')) { event.preventDefault(); zoomOut(); }
+});
+
+function saveHash() {
+  const params = new URLSearchParams();
+  if (state.stack.length > 1) params.set('level', state.stack.slice(1).join(','));
+  if (state.selected) params.set('select', state.selected);
+  if (state.selected && state.tab !== 'overview') params.set('tab', state.tab);
+  history.replaceState(null, '', params.size ? '#' + params : location.pathname);
+}
+(async () => {
+  const params = new URLSearchParams(location.hash.slice(1));
+  const deepest = (params.get('level') ?? '').split(',').filter(key => levels.has(key) && elements.has(key)).at(-1);
+  if (deepest) state.stack = stackFor(deepest);
+  state.variant = defaultVariant();
+  await renderLevel();
+  if (elements.has(params.get('select'))) { select(params.get('select')); if (params.get('tab')) { state.tab = params.get('tab'); renderPanel(); } }
+  window.__ready = true;
+})();
+</script>
+</body>
+</html>
