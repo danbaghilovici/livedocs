@@ -113,6 +113,9 @@
     if (busy) return;
     busy = true;
     try {
+      // Rendering the next level destroys the focused box or button; put focus back afterwards.
+      const active = document.activeElement;
+      const hadFocus = [canvas, panel, $('nav.crumbs')].some(region => region.contains(active));
       // A level change closes the panel; the selected box is usually not on the next level.
       if (state.selected) closePanel({ restoreFocus: false });
       const stage = $('.stage').getBoundingClientRect();
@@ -133,6 +136,8 @@
       await renderLevel();
       canvas.classList.add('instant');
       const back = outOf && nodeFor(outOf);
+      const landing = back || (hadFocus && canvas.querySelector('.c4-shape'));
+      if (landing) landing.focus({ preventScroll: true });
       canvas.style.transformOrigin = 'center';
       if (slide) canvas.style.transform = 'translateX(12%)';
       else if (back) aim(back);
@@ -159,7 +164,8 @@
   }
 
   function select(alias) {
-    if (!elements.has(alias)) return;
+    // During a transition the box clicked is on the outgoing level, and the panel was just closed.
+    if (busy || !elements.has(alias)) return;
     if (state.selected) {
       const old = nodeFor(state.selected);
       if (old) setStroke(old, false);
@@ -256,11 +262,12 @@
     for (const code of container.querySelectorAll('pre > code.language-mermaid')) {
       const source = code.textContent;
       try {
-        if (!await mermaid.parse(source, { suppressErrors: true })) continue;
+        const diagram = await mermaid.parse(source, { suppressErrors: true });
+        if (!diagram) continue;
         const figure = document.createElement('figure');
         figure.className = 'mermaid-diagram';
+        if (diagram.diagramType === 'c4') figure.classList.add('mermaid-c4');
         figure.innerHTML = await renderMermaid(source);
-        if (figure.querySelector('.c4-shape')) figure.classList.add('mermaid-c4');
         code.parentElement.replaceWith(figure);
       } catch (error) {
         console.warn('Could not render a Mermaid diagram.', error);
@@ -336,7 +343,7 @@
   });
   $('.variants').addEventListener('click', async event => {
     const button = event.target.closest('button[data-variant]');
-    if (!button) return;
+    if (!button || busy) return;
     state.variant = button.dataset.variant === '' ? null : +button.dataset.variant;
     await renderLevel();
     if (state.selected && panel.classList.contains('open')) renderPanel();
@@ -353,7 +360,10 @@
       panel.querySelector(`#tab-${state.tab}`).focus();
     }
     const target = event.target.closest('[data-goto]');
-    if (target && nodeFor(target.dataset.goto)) select(target.dataset.goto);
+    if (target && nodeFor(target.dataset.goto)) {
+      select(target.dataset.goto);
+      panel.querySelector('[role="tabpanel"]').focus(); // the clicked entry was replaced
+    }
   });
   // ARIA tabs pattern: arrow keys, Home and End move between tabs.
   panel.addEventListener('keydown', event => {

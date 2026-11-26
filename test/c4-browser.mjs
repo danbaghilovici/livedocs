@@ -176,6 +176,18 @@ const crumbs = `[...document.querySelectorAll('nav.crumbs button')].map(b => b.t
 const panelOpen = `document.querySelector('aside.panel').classList.contains('open')`;
 const badge = alias => `(() => { const d = document.querySelector('.c4-shape[data-alias="${alias}"] .zoom-badge path')?.getAttribute('d'); return d ? (d.startsWith('M-5') ? '+' : '↗') : 'none'; })()`;
 const shapesAccessible = `[...document.querySelectorAll('.canvas .c4-shape')].every(s => s.getAttribute('role') === 'button' && s.getAttribute('tabindex') === '0' && s.getAttribute('aria-label'))`;
+const label = alias => `document.querySelector('.c4-shape[data-alias="${alias}"]')?.getAttribute('aria-label')`;
+const focused = `document.activeElement.closest('.c4-shape')?.dataset.alias ?? document.activeElement.tagName`;
+// The client shows its own text instead of Mermaid's error, and leaves fences that fail to parse as code.
+const renderProblem = `(() => {
+  const text = document.body.textContent;
+  if (/Could not render|Syntax error/i.test(text)) return 'shows "Could not render"';
+  if (document.querySelector('.item pre > code.language-mermaid')) return 'leaves a Mermaid fence unrendered';
+  if (document.querySelector('body > [id^="dc4"]')) return 'leaves a Mermaid error diagram in the body';
+  if (text.includes('Rendering…')) return 'is still rendering';
+  return '';
+})()`;
+const settled = `!document.body.textContent.includes('Rendering…') && !document.querySelector('.item pre > code.language-mermaid')`;
 const tabCounts = `Object.fromEntries([...document.querySelectorAll('[role="tab"]')].map(t => [t.dataset.tab, t.querySelector('.count')?.textContent ?? '']))`;
 const openTab = async tab => {
   await evaluate(`document.querySelector('[data-tab="${tab}"]').click()`);
@@ -186,9 +198,11 @@ await open('');
 await check('opens on the context level', async () => await evaluate(crumbs) === 'Context' && await evaluate(`document.querySelector('.level').textContent`) === 'Level 1 · System context');
 await check('the context level badges shop with +', async () => await evaluate(badge('shop')) === '+');
 await check('context shapes are buttons with tabindex and a label', () => evaluate(shapesAccessible));
+await check('an element without a level of its own is named by its label', async () => await evaluate(label('customer')) === 'Customer');
 
 await evaluate(`__c4.zoomIn('shop')`);
 await check('zooming in sets the breadcrumb to the path', async () => await evaluate(crumbs) === 'Context › Shop');
+await check('a descendant\'s accessible name says it can zoom in', async () => await evaluate(label('api')) === 'Order API, can zoom in');
 await check('a level with several views opens on the first view', async () =>
   JSON.stringify(await evaluate(`[...document.querySelectorAll('.variants button')].map(b => b.textContent + ':' + b.getAttribute('aria-pressed'))`)) ===
   JSON.stringify(['All merged:false', 'Serving:true', 'Billing:false']));
@@ -198,6 +212,7 @@ await check('"All merged" shows elements from every view', () => until(`!!docume
 await open('level=shop,api');
 await check('a deep link opens the level', async () => await evaluate(crumbs) === 'Context › Shop › Order API');
 await check('a peer is badged ↗', async () => await evaluate(badge('web')) === '↗');
+await check('a peer\'s accessible name says it can go to its own view', async () => await evaluate(label('web')) === 'Web app, can go to its own view');
 const trail = [];
 for (const alias of ['web', 'api', 'web', 'api']) {
   await evaluate(`__c4.zoomIn('${alias}')`);
@@ -269,7 +284,52 @@ await evaluate(`document.activeElement.blur()`);
 await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 });
 await check('Backspace zooms out', () => until(`${crumbs} === 'Context › Shop' && !__c4.state.selected`));
 
-const visited = [];
+await open('level=shop,api');
+await evaluate(`document.querySelector('.c4-shape[data-alias="checkout"]').focus()`);
+await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 });
+await until(`${crumbs} === 'Context › Shop'`);
+await delay(800);
+await check('zooming out focuses the box it came out of', async () => await evaluate(focused) === 'api' || evaluate(focused));
+await send('Input.dispatchKeyEvent', { type: 'keyDown', key: '+', code: 'Equal', text: '+' });
+await until(`${crumbs} === 'Context › Shop › Order API'`);
+await delay(800);
+await check('zooming in with + keeps focus on a box', async () => await evaluate(`!!document.activeElement.closest('.canvas .c4-shape')`) || evaluate(focused));
+await open('level=shop&select=api');
+await evaluate(`(b => { b.focus(); b.click(); })(document.querySelector('[data-action="zoom"]'))`);
+await until(`${crumbs} === 'Context › Shop › Order API'`);
+await delay(800);
+await check('the panel zoom button leaves focus on a box', async () => await evaluate(`!!document.activeElement.closest('.canvas .c4-shape')`) || evaluate(focused));
+await open('level=shop&select=api');
+await evaluate(`(b => { b.focus(); b.click(); })(document.querySelector('[data-goto="web"]'))`);
+await check('a Called by entry keeps focus in the panel', async () =>
+  await evaluate('__c4.state.selected') === 'web' && await evaluate(`document.querySelector('aside.panel').contains(document.activeElement)`));
+
+await open('level=shop');
+await check('a click during a transition does not open the panel', async () => {
+  const during = await evaluate(`(async () => {
+    const done = __c4.zoomIn('api');
+    await new Promise(resolve => setTimeout(resolve, 100));
+    document.querySelector('.c4-shape[data-alias="web"]').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const selected = __c4.state.selected;
+    await done;
+    return selected;
+  })()`);
+  return during === null && !await evaluate(panelOpen) && await evaluate('__c4.state.selected') === null && await evaluate(crumbs) === 'Context › Shop › Order API';
+});
+await open('level=shop');
+await check('a view toggle during a transition is ignored', async () => {
+  const during = await evaluate(`(async () => {
+    const done = __c4.zoomOut();
+    await new Promise(resolve => setTimeout(resolve, 100));
+    document.querySelector('.variants [data-variant="1"]').click();
+    const variant = __c4.state.variant;
+    await done;
+    return variant;
+  })()`);
+  return during === 0 && await evaluate('__c4.state.variant') === null && await evaluate(crumbs) === 'Context' && !await evaluate(renderProblem);
+});
+
+const problems = [];
 let accessible = true;
 for (const [hash, variants] of [['', 0], ['level=shop', 3], ['level=shop,api', 0], ['level=shop,web', 0]]) {
   await open(hash);
@@ -277,19 +337,22 @@ for (const [hash, variants] of [['', 0], ['level=shop', 3], ['level=shop,api', 0
     if (variants) await evaluate(`document.querySelectorAll('.variants button')[${index}].click()`);
     await delay(200);
     accessible &&= await evaluate(shapesAccessible) && await evaluate(`document.querySelectorAll('.canvas .c4-shape').length > 0`);
-    visited.push(await evaluate(crumbs));
+    const problem = await evaluate(renderProblem);
+    if (problem) problems.push(`${await evaluate(crumbs)} view ${index} ${problem}`);
   }
   for (const alias of await evaluate(`[...document.querySelectorAll('.c4-shape')].map(s => s.dataset.alias)`)) {
     await evaluate(`__c4.select('${alias}')`);
     for (const tab of ['diagrams', 'docs', 'code']) {
-      if (await evaluate(`!!document.querySelector('[data-tab="${tab}"]')`)) await openTab(tab);
+      if (!await evaluate(`!!document.querySelector('[data-tab="${tab}"]')`)) continue;
+      await openTab(tab);
+      await until(settled, 3000);
+      const problem = await evaluate(renderProblem);
+      if (problem) problems.push(`${alias} ${tab} tab on ${await evaluate(crumbs)} ${problem}`);
     }
   }
 }
-await delay(500);
 await check('every .c4-shape on every level and view is an accessible button', () => accessible);
-await check('no Mermaid syntax error after visiting every level and tab', async () =>
-  !await evaluate(`/Syntax error/i.test(document.body.textContent) || !!document.querySelector('body > [id^="dc4"]')`) || visited);
+await check('every level, view and tab renders without a Mermaid error', () => !problems.length || problems);
 
 if (screenshot) {
   await open('level=shop&select=api&tab=docs');
