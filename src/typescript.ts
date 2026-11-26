@@ -231,18 +231,19 @@ function tagLabelsFrom(tags: ReturnType<typeof realdocsTags>): string[] {
   return normalizeTagLabels(tags.filter(tag => tag.name === 'tag').map(tag => tag.value));
 }
 
-// Whether nothing but whitespace, `*` and the comment opener comes before the tag on its line.
-function startsLine(node: ts.JSDocTag): boolean {
+// Whether the tag sits inside a Markdown marker form (`<!-- @realdocs:c4 … -->` or `%% @realdocs:c4 …`),
+// which is part of the overview text and handled when the overview is compiled.
+function inMarkerForm(node: ts.JSDocTag): boolean {
   const { text } = node.getSourceFile();
   const start = node.getStart();
-  return /^\s*(?:\/\*\*)?[\s*]*$/.test(text.slice(text.lastIndexOf('\n', start - 1) + 1, start));
+  return /(?:<!--|%%)\s*$/.test(text.slice(text.lastIndexOf('\n', start - 1) + 1, start));
 }
 
 function c4MarksFrom(
   annotations: ReturnType<typeof realdocsTags>,
   at: (node: ts.JSDocTag) => { line: number; column: number },
 ): C4Mark[] | undefined {
-  const marks = annotations.filter(tag => tag.name === 'c4' && startsLine(tag.node)).map(tag => ({ path: tag.value, ...at(tag.node) }));
+  const marks = annotations.filter(tag => tag.name === 'c4' && !inMarkerForm(tag.node)).map(tag => ({ path: tag.value, ...at(tag.node) }));
   return marks.length ? marks : undefined;
 }
 
@@ -290,7 +291,7 @@ function fileOverview(file: ts.SourceFile): MarkdownContent | undefined {
     const following = annotations.slice(annotations.indexOf(tag) + 1);
     let bodyEnd = tag.node.end;
     for (const next of following) {
-      if (next.name !== 'c4' || startsLine(next.node) || next.node.pos !== bodyEnd) break;
+      if (next.name !== 'c4' || !inMarkerForm(next.node) || next.node.pos !== bodyEnd) break;
       bodyEnd = next.node.end;
     }
     const body = comment.slice(tag.bodyStart, Math.min(bodyEnd, comment.length - 2)).replace(/\r\n?/g, '\n');

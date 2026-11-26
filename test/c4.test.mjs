@@ -493,3 +493,27 @@ test('a %% marker with extra words is an invalid path', t => {
   assert.equal(result.status, 1);
   assert.match(result.stderr, /docs\/notes\.md:4:1: error: Invalid @realdocs:c4 path "shop api"\. Use aliases separated by dots, such as shop\.api\./);
 });
+
+test('single-line symbol and overview marks still make items and never reach the wiki', t => {
+  const project = shopProject(t, {
+    'src/a.ts': '/** Does a. @realdocs:c4 shop */\nexport function a(): void {}\n',
+    'src/c.ts': '/** @realdocs:file Overview c. @realdocs:c4 shop.api */\nexport function c(): void {}\n',
+  });
+  const args = ['--entry', 'src/a.ts', '--entry', 'src/c.ts', ...shopArgs];
+  const { result, model } = dumpModel(project, ...args);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(model.items.map(i => [i.kind, i.path, i.title]), [['symbol', 'shop', 'a'], ['file', 'shop.api', 'src/c.ts']]);
+  assert.equal(model.items[1].markdown.trim(), 'Overview c.');
+  for (const format of ['markdown', 'html']) {
+    project.run('build', ...args, '--format', format, '--out', `wiki-${format}`);
+    const ext = format === 'html' ? 'html' : 'md';
+    for (const page of ['src/a.ts', 'src/c.ts']) assert.doesNotMatch(project.read(`wiki-${format}/modules/${page}.${ext}`), /realdocs:c4/);
+  }
+});
+
+test('a multi-line marker comment inside a blockquote is reported and stripped', t => {
+  const project = shopProject(t, { 'docs/notes.md': '# Notes\n\n> <!--\n> @realdocs:c4 shop\n> -->\n' });
+  const result = project.result('check', ...shopArgs, '--page', 'docs/notes.md');
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /docs\/notes\.md:3:3: error: Place <!-- @realdocs:c4 … -->/);
+});

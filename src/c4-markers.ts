@@ -6,7 +6,7 @@ import type { C4Item, C4Mark, C4Model, Diagnostic, Documentation, MarkdownConten
 const markdown = new MarkdownIt({ html: true });
 const mention = /@(?:realdocs|livedocs):c4\b/;
 const sectionMarker = /^<!--[ \t]*@(?:realdocs|livedocs):c4(?:[ \t]+(.*?))?[ \t]*-->[ \t]*$/;
-const commentSource = String.raw`<!--\s*@(?:realdocs|livedocs):c4\b[\s\S]*?-->`;
+const commentSource = String.raw`<!--[\s>]*@(?:realdocs|livedocs):c4\b[\s\S]*?-->`;
 const docId = /^[a-zA-Z][a-zA-Z0-9._-]*$/;
 
 interface Heading { line: number; end: number; depth: number; text: string; id?: string }
