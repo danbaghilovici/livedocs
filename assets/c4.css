@@ -82,3 +82,5 @@ dialog .dlg-body svg { max-width: 100%; height: auto; display: block; margin-inl
   .workspace { grid-template-columns: 1fr }
   aside.panel { position: absolute; inset: 0 0 0 auto; z-index: 2 }
 }
+.item .body :is(h1, h2, h3, h4, h5, h6) { font: 600 1rem/1.3 system-ui, sans-serif; text-transform: none; letter-spacing: 0; color: var(--wiki-ink); margin: .6rem 0 .3rem }
+.item .body .mermaid-diagram { margin: .5rem 0 }
