@@ -593,3 +593,15 @@ test('lists c4.html in a versioned build', t => {
   assert.match(release.files['c4.html'], /^[a-f0-9]{64}$/);
   assert.match(release.files['assets/c4.js'], /^[a-f0-9]{64}$/);
 });
+
+test('the fulfillment example builds a strict C4 page with marked content', t => {
+  const out = mkdtempSync(join(tmpdir(), 'realdocs-c4-example-'));
+  t.after(() => rmSync(out, { recursive: true, force: true }));
+  const example = fileURLToPath(new URL('../examples/fulfillment/', import.meta.url));
+  execFileSync(process.execPath, [cli, 'build', '--strict', '--c4', '--format', 'html', '--out', out], { cwd: example, encoding: 'utf8' });
+  const model = JSON.parse(readFileSync(join(out, 'c4.html'), 'utf8').match(/id="c4-data">(.*?)<\/script>/s)[1]);
+  assert.deepEqual(model.levels.map(l => l.key).sort(), ['', 'fulfillment', 'runtime']);
+  assert.ok(model.items.some(i => i.path === 'fulfillment' && i.kind === 'section'));
+  assert.ok(model.items.some(i => i.path === 'fulfillment.runtime' && i.kind === 'diagram'));
+  assert.ok(model.items.some(i => i.path === 'fulfillment.runtime.coordinator' && i.kind === 'symbol'));
+});
