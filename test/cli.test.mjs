@@ -829,7 +829,7 @@ export const count = 1;
 
   const page = project.read('wiki/modules/index.ts.html');
   assert.match(page, /&lt;div id=&quot;symbol-count&quot;&gt;/);
-  assert.match(page, /<pre><code class="language-text">This code fence has no closing line\.\n<\/code><\/pre>/);
+  assert.match(page, /<pre class="[^"]*"><code class="language-text">This code fence has no closing line\.\n<\/code><\/pre>/);
   assert.match(page, /href="\.\.\/index\.html"/);
   assert.equal(page.match(/id="symbol-count"/g)?.length, 1);
   assert.match(page, /<h2(?: [^>]*)?><code>count<\/code><\/h2>/);

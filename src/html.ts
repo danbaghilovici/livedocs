@@ -23,40 +23,31 @@ markdown.inline.ruler.before('html_inline', 'realdocs_anchor', (state, silent) =
 });
 markdown.renderer.rules.realdocs_anchor = (tokens, index) => `<a id="${escape(String(tokens[index].attrGet('id') ?? ''))}"></a>`;
 
+// Authored content uses Bootstrap's table, code block, and blockquote classes.
+markdown.renderer.rules.table_open = () => '<div class="table-responsive"><table class="table table-bordered">\n';
+markdown.renderer.rules.table_close = () => '</table></div>\n';
+markdown.renderer.rules.blockquote_open = () => '<blockquote class="border-start border-3 ps-3 text-body-secondary">\n';
+for (const rule of ['fence', 'code_block'] as const) {
+  const render = markdown.renderer.rules[rule]!;
+  markdown.renderer.rules[rule] = (...args) => render(...args).replace(/^<pre>/, '<pre class="p-3 bg-body-tertiary border rounded">');
+}
+
+// Bootstrap styles the pages. These aliases give the file map and diagrams Bootstrap's colours.
 const style = `
   :root {
-    color-scheme: dark;
-    --wiki-page: #101614;
-    --wiki-surface: #1a2521;
-    --wiki-ink: #e8efe9;
-    --wiki-muted: #b0c0b7;
-    --wiki-line: #3b5046;
-    --wiki-accent: #a6dfc3;
-    --wiki-heading: Georgia, 'Times New Roman', serif;
-    --wiki-mono: ui-monospace, 'Cascadia Code', monospace;
-    --wiki-radius: .45rem;
+    --wiki-page: var(--bs-body-bg);
+    --wiki-surface: var(--bs-tertiary-bg);
+    --wiki-ink: var(--bs-body-color);
+    --wiki-muted: var(--bs-secondary-color);
+    --wiki-line: var(--bs-border-color);
+    --wiki-accent: var(--bs-link-color);
+    --wiki-heading: var(--bs-body-font-family);
+    --wiki-mono: var(--bs-font-monospace);
+    --wiki-radius: var(--bs-border-radius);
   }
-  *, *::before, *::after { box-sizing: border-box }
-  body { background: var(--wiki-page); color: var(--wiki-ink) }
-  .wiki-content :is(h1, h2) { font-family: var(--wiki-heading); font-weight: 400; letter-spacing: -.025em; line-height: 1.15 }
-  .wiki-content h1 { font-size: clamp(2.15rem, 5vw, 3.5rem); margin-block: 0 .8rem }
-  .wiki-content h2 { font-size: clamp(1.55rem, 3vw, 2.1rem); margin-block: 2rem .65rem }
-  .wiki-content h3 { line-height: 1.3; margin-block-start: 1.5rem }
-  .wiki-content a { color: var(--wiki-accent); text-underline-offset: .2em }
-  :focus-visible { outline: 2px solid var(--wiki-accent); outline-offset: 3px }
-  .wiki-content code { font: .86em/1.55 var(--wiki-mono) }
-  .wiki-content pre { overflow: auto; padding: 1rem; border: 1px solid var(--wiki-line); border-radius: var(--wiki-radius); background: var(--wiki-surface) }
-  .wiki-content blockquote { margin-inline: 0; padding-inline-start: 1rem; border-inline-start: 2px solid var(--wiki-line); color: var(--wiki-muted) }
-  .wiki-content img { max-width: 100%; height: auto }
-  .wiki-content table { display: block; overflow-x: auto; border-collapse: collapse }
-  .wiki-content th, .wiki-content td { padding: .5rem .75rem; border: 1px solid var(--wiki-line); text-align: start }
-  .wiki-content th { background: var(--wiki-surface) }
-  .mermaid-diagram { margin-inline: 0; padding: 1rem; overflow: auto; background: var(--wiki-surface); color: var(--wiki-ink); border: 1px solid var(--wiki-line); border-radius: var(--wiki-radius) }
   .mermaid-diagram svg { display: block; margin-inline: auto; max-width: 100%; height: auto }
-  /* C4 uses fixed relationship and boundary colors outside Mermaid's theme. */
-  .mermaid-c4 svg :is(text, tspan)[fill="#444444"], .mermaid-c4 svg :is(text, tspan)[fill="black"],
-  .mermaid-c4 svg marker[id$="-arrowhead"] path, .mermaid-c4 svg marker[id$="-arrowend"] path { fill: var(--wiki-muted) }
-  .mermaid-c4 svg [stroke="#444444"] { stroke: var(--wiki-muted) }
+  /* Bootstrap's reboot floats and enlarges legends; the file map filters expect plain ones. */
+  .file-map legend { float: none; width: auto; margin: 0; font-size: inherit; line-height: inherit }
 `;
 
 const runtimePath = 'assets/mermaid.min.js';
@@ -66,26 +57,11 @@ const runner = `
 (async () => {
   const mermaid = globalThis.mermaid;
   if (!mermaid) return;
-  const style = getComputedStyle(document.documentElement);
-  const color = name => style.getPropertyValue('--wiki-' + name).trim();
   mermaid.initialize({
     // Mermaid 12 changed the default flowchart layout, look, and label width (to 120px, which
     // clips single-word labels such as export names); keep the established rendering.
-    startOnLoad: false, securityLevel: 'strict', theme: 'base', layout: 'dagre', look: 'classic',
+    startOnLoad: false, securityLevel: 'strict', theme: 'default', layout: 'dagre', look: 'classic',
     flowchart: { wrappingWidth: 200 },
-    themeVariables: {
-      darkMode: true, background: color('surface'), primaryColor: '#284137',
-      primaryTextColor: color('ink'), primaryBorderColor: '#698d7e',
-      lineColor: color('muted'), textColor: color('ink'),
-      secondaryColor: '#2c3a4c', tertiaryColor: color('surface'),
-      edgeLabelBackground: color('surface'), fontFamily: 'system-ui, sans-serif',
-    },
-    c4: {
-      person_bg_color: '#285b4a', person_border_color: '#619b86',
-      system_bg_color: '#315a72', system_border_color: '#7099af',
-      container_bg_color: '#315a72', container_border_color: '#7099af',
-      component_bg_color: '#2e5144', component_border_color: '#619b86',
-    },
   });
   const diagrams = document.querySelectorAll('pre > code.language-mermaid');
   for (const [index, code] of diagrams.entries()) {
@@ -95,8 +71,7 @@ const runner = `
       if (!diagram) continue;
       const { svg } = await mermaid.render('realdocs-diagram-' + index, source);
       const figure = document.createElement('figure');
-      figure.className = 'mermaid-diagram';
-      if (diagram.diagramType === 'c4') figure.classList.add('mermaid-c4');
+      figure.className = 'mermaid-diagram border rounded p-3';
       figure.innerHTML = svg;
       code.parentElement.replaceWith(figure);
     } catch (error) {
