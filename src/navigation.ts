@@ -61,8 +61,14 @@ interface Placement {
   name: string;
 }
 
+/** Path segments without empty and `.` parts. `..` stays so that it can be reported. */
 function segments(path: string | undefined): string[] {
-  return (path ?? '').split('/').map(segment => segment.trim()).filter(Boolean);
+  return (path ?? '').split('/').map(segment => segment.trim()).filter(segment => segment && segment !== '.');
+}
+
+/** A slug made only of dots would address a folder above or at its parent. */
+function dotted(text: string): boolean {
+  return /^\.+$/.test(slugify(text));
 }
 
 /**
@@ -120,6 +126,11 @@ export function placeDocumentation(documentation: Documentation, extension: Page
       : input.kind === 'pages' ? basename.replace(/\.md$/i, '') : basename;
 
     const slug = slugify(category);
+    const relative = [category, ...groups, name].find(dotted);
+    if (relative !== undefined) {
+      error(`"${relative.trim()}" cannot be used in a URL.`, source);
+      continue;
+    }
     const unusable = [category, ...groups, name].find(text => !slugify(text));
     if (unusable !== undefined) {
       error(`"${unusable}" has no letters or digits to use in a URL.`, source);
@@ -162,7 +173,8 @@ export function placeDocumentation(documentation: Documentation, extension: Page
   for (const section of sections) {
     if (!section.category) continue;
     const slug = slugify(section.category);
-    if (!slugify(section.category) || reservedSlugs.includes(slug) || segments(section.group ?? section.id).some(text => !slugify(text))) continue;
+    if (!slug || dotted(section.category) || reservedSlugs.includes(slug) ||
+      segments(section.group ?? section.id).some(text => !slugify(text) || dotted(text))) continue;
     if (!labels.has(slug)) labels.set(slug, section.category);
     categoryGroup(slug);
     const path = [slug, ...segments(section.group ?? section.id).map(slugify)];
@@ -207,8 +219,10 @@ export function placeDocumentation(documentation: Documentation, extension: Page
   for (const node of tree) order(node);
 
   // Uncategorized sections and inputs keep today's URLs under two generated groups.
+  // Unplaced entries keep their full path as a label, since several may share a file name.
   const page = (input: Input): NavPage => ({
-    kind: 'page', label: input.label, file: routes[input.source].file, source: input.source, code: input.kind === 'modules',
+    kind: 'page', label: input.kind === 'modules' ? input.source : input.label, file: routes[input.source].file,
+    source: input.source, code: input.kind === 'modules',
   });
   const unplacedBySource = new Map(unplaced.map(input => [input.source, input]));
   const listed = new Set<string>();
@@ -235,6 +249,25 @@ export function placeDocumentation(documentation: Documentation, extension: Page
   for (const synthetic of tree.filter(node => node.key === 'sections' || node.key === 'pages')) {
     const clash = Object.entries(routes).find(([, route]) => route.file === synthetic.file);
     if (clash) error(`Page ${clash[0]} resolves to ${synthetic.file}, which is the ${synthetic.label} index.`, clash[0]);
+  }
+
+  // A page file and a folder of the same name cannot both be written.
+  const files = new Map<string, string>([[home, 'the homepage']]);
+  if (documentation.fileGraph) files.set(`file-map.${extension}`, 'the file map');
+  const tagged = (content?: MarkdownContent) => !!content?.tagLabels?.length;
+  if (inputs.some(input => tagged(input.content)) || documentation.modules.some(module => module.symbols.some(symbol => symbol.tagLabels?.length))) {
+    files.set(`tags.${extension}`, 'the tags page');
+  }
+  const folders = new Map<string, string>();
+  for (const [source, route] of Object.entries(routes)) {
+    files.set(route.file, source);
+    for (let folder = posix.dirname(route.file); folder !== '.'; folder = posix.dirname(folder)) {
+      if (!folders.has(folder)) folders.set(folder, source);
+    }
+  }
+  for (const [file, owner] of files) {
+    const folder = folders.get(file);
+    if (folder) error(`${file} is both a page (${owner}) and a folder (${folder}).`);
   }
 
   for (const key of Object.keys(overrides)) {

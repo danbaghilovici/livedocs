@@ -189,7 +189,7 @@ test('renders home, group index pages, breadcrumbs, and a file map page in Markd
   assert.match(decisions, /\[Storage layer\]\(storage\/index\.md\)[\s\S]*\[ADR 9\]\(0009-a\.md\)[\s\S]*\[ADR 10\]\(0010-c\.md\)/);
   assert.match(project.read('wiki/decisions/storage/0002-b.md'),
     /^\[Home\]\(\.\.\/\.\.\/index\.md\) › \[Decisions\]\(\.\.\/index\.md\) › \[Storage layer\]\(index\.md\)$/m);
-  assert.match(project.read('wiki/sections/api/index.md'), /\[index\.ts\]\(\.\.\/\.\.\/modules\/src\/index\.ts\.md\)/);
+  assert.match(project.read('wiki/sections/api/index.md'), /\[src\/index\.ts\]\(\.\.\/\.\.\/modules\/src\/index\.ts\.md\)/);
   assert.match(project.read('wiki/sections/api/index.md'), /## File map/);
 
   // moving a page removes its old output
@@ -202,7 +202,7 @@ test('renders home, group index pages, breadcrumbs, and a file map page in Markd
 test('generates a home page from the tree when there is no README', t => {
   const project = fixture(t, { 'src/index.ts': 'export const x = 1;\n' });
   project.run('build', '--entry', 'src/index.ts', '--out', 'wiki');
-  assert.match(project.read('wiki/index.md'), /^# Project documentation\n[\s\S]*- \[Code reference\]\(sections\/index\.md\)\n  - \[index\.ts\]\(modules\/src\/index\.ts\.md\)/m);
+  assert.match(project.read('wiki/index.md'), /^# Project documentation\n[\s\S]*- \[Code reference\]\(sections\/index\.md\)\n  - \[src\/index\.ts\]\(modules\/src\/index\.ts\.md\)/m);
 });
 
 test('wraps every HTML page in the offline Bootstrap shell', t => {
@@ -240,4 +240,49 @@ test('wraps every HTML page in the offline Bootstrap shell', t => {
   assert.match(project.read('site/index.html'), /<h1[^>]*>Shop<\/h1>/);
   assert.match(project.read('site/tags.html'), /<nav aria-label="breadcrumb">/);
   assert.match(project.read('site/file-map.html'), /id="file-map-data"/);
+});
+
+test('rejects dot segments that would leave the output directory', t => {
+  const project = fixture(t, {
+    'docs/c.md': '<!-- @realdocs:category .. -->\n<!-- @realdocs:path ../../pwned -->\n# C\n',
+    'docs/d.md': '<!-- @realdocs:category Guides -->\n<!-- @realdocs:path ../escape -->\n# D\n',
+    'docs/e.md': '# E\n',
+    'realdocs.json': JSON.stringify({ pages: ['docs/c.md', 'docs/d.md', 'docs/e.md'], rules: [{ files: 'docs/e.md', category: 'Guides', group: '../..' }] }),
+  });
+  const result = project.result('build', '--out', 'out/wiki');
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /docs\/c\.md:1:1: error: "\.\." cannot be used in a URL\./);
+  assert.match(result.stderr, /docs\/d\.md:1:1: error: "\.\." cannot be used in a URL\./);
+  assert.match(result.stderr, /docs\/e\.md:1:1: error: "\.\." cannot be used in a URL\./);
+  assert.equal(existsSync(join(project.cwd, 'pwned.md')), false);
+  assert.equal(existsSync(join(project.cwd, 'out/escape.md')), false);
+});
+
+test('treats ./ segments as no-ops and reports file and folder clashes', t => {
+  const project = fixture(t, {
+    'docs/a.md': '<!-- @realdocs:category Guides -->\n<!-- @realdocs:path ./sub/./a -->\n# A\n',
+    'docs/b.md': '<!-- @realdocs:category Guides -->\n<!-- @realdocs:path foo.md/bar -->\n# B\n',
+    'docs/c.md': '<!-- @realdocs:category Guides -->\n<!-- @realdocs:path foo -->\n# C\n',
+    'docs/d.md': '<!-- @realdocs:category file-map.md -->\n# D\n',
+    'realdocs.json': JSON.stringify({ pages: ['docs/a.md'] }),
+  });
+  project.run('build', '--out', 'wiki');
+  assert.ok(existsSync(join(project.cwd, 'wiki/guides/sub/a.md')));
+  project.write('realdocs.json', JSON.stringify({ pages: ['docs/a.md', 'docs/b.md', 'docs/c.md', 'docs/d.md'] }));
+  const result = project.result('build', '--out', 'wiki', '--graph');
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /error: guides\/foo\.md is both a page \(docs\/c\.md\) and a folder \(docs\/b\.md\)\./);
+  assert.match(result.stderr, /error: file-map\.md is both a page \(the file map\) and a folder \(docs\/d\.md\)\./);
+  assert.doesNotMatch(result.stderr, /EEXIST|ENOTDIR|EISDIR/);
+});
+
+test('labels unplaced code pages with their full path', t => {
+  const project = fixture(t, {
+    'src/a/index.ts': 'export const a = 1;\n',
+    'src/b/index.ts': 'export const b = 1;\n',
+  });
+  project.run('build', '--entry', 'src/a/index.ts', '--entry', 'src/b/index.ts', '--out', 'wiki');
+  const home = project.read('wiki/index.md');
+  assert.match(home, /\[src\/a\/index\.ts\]\(modules\/src\/a\/index\.ts\.md\)/);
+  assert.match(home, /\[src\/b\/index\.ts\]\(modules\/src\/b\/index\.ts\.md\)/);
 });
