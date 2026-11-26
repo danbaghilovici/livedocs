@@ -218,3 +218,64 @@ test('validates --c4 options', t => {
   assert.match(empty.result('build', '--c4', '--format', 'html', '--page', 'docs/a.md').stderr,
     /error: --c4 found no C4Context, C4Container, or C4Component diagrams in the wiki inputs\. Add one to a selected guide or @realdocs:file overview\./);
 });
+
+test('treats a grouping boundary reused inside two systems as transparent', t => {
+  const project = fixture(t, { 'docs/a.md': '# A\n\n' + fence(`C4Context
+System(shop, "Shop", "Sells")
+System(bank, "Bank", "Banks")`) + '\n' + fence(`C4Container
+System_Boundary(shop, "Shop") {
+  Boundary(data, "Data tier") {
+    ContainerDb(orders, "Orders", "PostgreSQL", "Orders")
+  }
+}`) + '\n' + fence(`C4Container
+System_Boundary(bank, "Bank") {
+  Boundary(data, "Data tier") {
+    ContainerDb(ledger, "Ledger", "PostgreSQL", "Ledger")
+  }
+}`) });
+  const { result, model } = dumpModel(project, '--page', 'docs/a.md');
+  assert.doesNotMatch(result.stderr, /declared inside both/);
+  assert.equal(result.status, 0);
+  assert.equal(model.elements.find(e => e.alias === 'orders').path, 'shop.orders');
+});
+
+test('keeps elements of a grouping boundary outside the merged element boundary', t => {
+  const project = fixture(t, { 'docs/a.md': '# A\n\n' + fence(`C4Context
+System(shop, "Shop", "Sells")`) + '\n' + fence(`C4Container
+Enterprise_Boundary(ext, "External") {
+  System_Ext(bank, "Bank", "Banks")
+}
+System_Boundary(shop, "Shop") {
+  Container(api, "API", "Node.js", "Orders")
+}`) + '\n' + fence(`C4Container
+System_Boundary(shop, "Shop") {
+  Container(web, "Web", "React", "UI")
+}`) });
+  const { model } = dumpModel(project, '--page', 'docs/a.md');
+  const merged = model.levels.find(l => l.key === 'shop').merged;
+  assert.match(merged, /\nSystem_Ext\(bank,[^\n]*\nSystem_Boundary\(shop, "Shop"\) \{\n  Container\(api,/);
+  assert.doesNotMatch(merged, /  System_Ext\(bank/);
+});
+
+test('warns about shared labels across views of one element boundary', t => {
+  const project = fixture(t, { 'docs/a.md': '# A\n\n' + fence(`C4Context
+System(shop, "Shop", "Sells")`) + '\n' + fence(`C4Container
+System_Boundary(shop, "Shop") {
+  ContainerDb(platform, "Platform DB", "PostgreSQL", "Registry")
+}`) + '\n' + fence(`C4Container
+System_Boundary(shop, "Shop") {
+  ContainerDb(platformDb, "Platform DB", "PostgreSQL", "Operations")
+}`) });
+  const result = project.result('check', '--c4', '--page', 'docs/a.md');
+  assert.match(result.stderr, /warning: C4 elements platform and platformDb in shop share the label "Platform DB"\./);
+});
+
+test('reports an element nested inside itself', t => {
+  const project = fixture(t, { 'docs/a.md': '# A\n\n' + fence(`C4Container
+System_Boundary(x, "X") {
+  System(x, "X", "Self")
+}`) });
+  const { result, model } = dumpModel(project, '--page', 'docs/a.md');
+  assert.match(result.stderr, /docs\/a\.md:\d+:\d+: error: C4 element x is nested inside itself\./);
+  assert.equal(model.elements.find(e => e.alias === 'x').path, 'x');
+});

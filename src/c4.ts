@@ -80,6 +80,10 @@ function deriveParents(all: Declaration[], elementBoundaries: Set<string>, diagn
     const { view } = declaration.placed;
     const parent = enclosing(view, declaration.inside, elementBoundaries);
     if (!parent) continue;
+    if (parent === declaration.alias) {
+      diagnostics.push({ level: 'error', message: `C4 element ${parent} is nested inside itself.`, location: where(declaration) });
+      continue;
+    }
     const known = parents.get(declaration.alias);
     if (!known) parents.set(declaration.alias, parent);
     else if (known !== parent) {
@@ -89,7 +93,7 @@ function deriveParents(all: Declaration[], elementBoundaries: Set<string>, diagn
   return parents;
 }
 
-function derivePaths(aliases: Iterable<string>, parents: Map<string, string>, diagnostics: Diagnostic[]): Map<string, string> {
+function derivePaths(all: Declaration[], aliases: Iterable<string>, parents: Map<string, string>, diagnostics: Diagnostic[]): Map<string, string> {
   const paths = new Map<string, string>();
   const resolve = (alias: string, visiting: Set<string>): string => {
     const known = paths.get(alias);
@@ -97,7 +101,7 @@ function derivePaths(aliases: Iterable<string>, parents: Map<string, string>, di
     const parent = parents.get(alias);
     let path = alias;
     if (parent && visiting.has(parent)) {
-      diagnostics.push({ level: 'error', message: `C4 element ${alias} is declared inside both ${parent} and ${alias}.` });
+      diagnostics.push({ level: 'error', message: `C4 element ${alias} is nested inside itself.`, location: where(all.find(d => d.alias === alias)!) });
     } else if (parent) path = `${resolve(parent, new Set(visiting).add(alias))}.${alias}`;
     paths.set(alias, path);
     return path;
@@ -123,7 +127,7 @@ function mergeViews(key: string, views: Placed[], elementBoundaries: Set<string>
   const relationships = new Map<string, string>();
   for (const placed of views) {
     for (const element of placed.view.elements) {
-      const target = element.boundary ? inside : outside;
+      const target = enclosing(placed.view, element.boundary, elementBoundaries) === key ? inside : outside;
       if (!target.has(element.alias)) target.set(element.alias, placed.lines[element.line].trim());
     }
     for (const { from, to, label, technology } of placed.view.relationships) {
@@ -141,7 +145,7 @@ function mergeViews(key: string, views: Placed[], elementBoundaries: Set<string>
   ].join('\n');
 }
 
-function warn(all: Declaration[], parents: Map<string, string>, hasContext: boolean, diagnostics: Diagnostic[]): void {
+function warn(all: Declaration[], parents: Map<string, string>, elementBoundaries: Set<string>, hasContext: boolean, diagnostics: Diagnostic[]): void {
   const labels = new Map<string, Declaration>();
   const shared = new Map<string, Declaration>();
   const reported = new Set<string>();
@@ -154,14 +158,15 @@ function warn(all: Declaration[], parents: Map<string, string>, hasContext: bool
     const first = labels.get(alias);
     if (!first) labels.set(alias, declaration);
     else if (first.label !== label) {
-      once(`${alias}\0${label}\0${placed.origin}\0${declaration.line}`, {
+      once(`${alias}\0${label}\0${placed.origin}\0${placed.line + declaration.line}`, {
         level: 'warning', location: where(declaration),
         message: `C4 element ${alias} is labeled "${label}" here and "${first.label}" in ${first.placed.origin}.`,
       });
     }
-    const boundary = declaration.boundary ? undefined : declaration.inside;
+    // Elements under a grouping boundary only fall back to that boundary.
+    const boundary = declaration.boundary ? undefined : enclosing(placed.view, declaration.inside, elementBoundaries) ?? declaration.inside;
     if (!boundary) continue;
-    const key = `${placed.line}\0${boundary}\0${label}`;
+    const key = `${boundary}\0${label}`;
     const other = shared.get(key);
     if (!other) shared.set(key, declaration);
     else if (other.alias !== alias) {
@@ -183,13 +188,15 @@ function warn(all: Declaration[], parents: Map<string, string>, hasContext: bool
 }
 
 function buildModel(views: Placed[], publish: boolean, diagnostics: Diagnostic[]): C4Model {
-  const all = declarations(views);
-  const elementDeclarations = all.filter(d => !d.boundary);
+  const everything = declarations(views);
+  const elementDeclarations = everything.filter(d => !d.boundary);
   const aliases = [...new Set(elementDeclarations.map(d => d.alias))];
   const declared = new Set(aliases);
-  const elementBoundaries = new Set(all.filter(d => d.boundary && declared.has(d.alias)).map(d => d.alias));
+  // Grouping boundaries (aliases that are no element) stay out of parents, paths and label checks.
+  const all = everything.filter(d => !d.boundary || declared.has(d.alias));
+  const elementBoundaries = new Set(all.filter(d => d.boundary).map(d => d.alias));
   const parents = deriveParents(all, elementBoundaries, diagnostics);
-  const paths = derivePaths(aliases, parents, diagnostics);
+  const paths = derivePaths(all, aliases, parents, diagnostics);
 
   const contexts = views.filter(({ view }) => view.type === 'C4Context');
   const grouped = new Map<string, Placed[]>();
@@ -226,7 +233,7 @@ function buildModel(views: Placed[], publish: boolean, diagnostics: Diagnostic[]
       type: levelViews[0].view.type, views: levelViews.map(place), ...merged === undefined ? {} : { merged },
     };
   });
-  warn(all, parents, contexts.length > 0, diagnostics);
+  warn(all, parents, elementBoundaries, contexts.length > 0, diagnostics);
   return { publish, root, levels, elements, items: [] };
 }
 
