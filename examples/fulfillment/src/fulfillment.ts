@@ -82,6 +82,7 @@ import { quoteShipping, type formatShippingQuote } from './shipping.js';
  * @throws {InventoryError} An order line is invalid or the order cannot be reserved.
  * @throws {RangeError} The parcel exceeds the shipping service's weight limits.
  * @realdocs:docId fulfillment.prepare
+ * @realdocs:c4 fulfillment.runtime.coordinator
  * @realdocs:docUses fulfillment.quote
  * @realdocs:docUses fulfillment.inventory
  * @realdocs:tag order-flow

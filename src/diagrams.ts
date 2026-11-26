@@ -16,6 +16,7 @@ interface LineEdit {
   start: number;
   end: number;
   lines: string[];
+  origins?: number[]; // original line index of each of `lines`; defaults to `start`
 }
 
 const markdown = {
@@ -128,6 +129,7 @@ function compileContent<T extends MarkdownContent>(
     const closed = end > start + 1 && last.startsWith(token.markup) && [...last].every(char => char === token.markup[0]);
     const bodyEnd = closed ? end - 1 : end;
     const body = [lines[start]];
+    const origins = [start];
     for (let line = start + 1; line < bodyEnd; line++) {
       const match = linkLine.exec(lines[line]);
       if (match) {
@@ -137,6 +139,7 @@ function compileContent<T extends MarkdownContent>(
       }
       const source = lines[line];
       if (directive.test(source.replace(inlineExpression, ''))) report('Unterminated Mermaid reference.', line);
+      origins.push(line);
       body.push(source.replace(inlineExpression, (raw, expression: string, column: number) => {
         const name = nameExpression.exec(expression);
         if (!name || !inLabel(source, column)) {
@@ -147,24 +150,35 @@ function compileContent<T extends MarkdownContent>(
         return target ? mermaidLabel(target.symbol.name) : raw;
       }));
     }
-    if (closed || links.length) body.push(closed ? lines[end - 1] : token.markup);
-    edits.push({ start, end, lines: [...body, ...legend(links, from)] });
+    if (closed || links.length) {
+      origins.push(end - 1);
+      body.push(closed ? lines[end - 1] : token.markup);
+    }
+    const added = legend(links, from);
+    edits.push({ start, end, lines: [...body, ...added], origins: [...origins, ...added.map(() => end - 1)] });
   }
 
   if (!edits.length) return content;
   const result: string[] = [];
+  const sourceLines: number[] = [];
+  const keep = (from: number, to: number): void => {
+    for (let line = from; line < to; line++) sourceLines.push(line);
+  };
   let cursor = 0;
   for (const edit of edits) {
     result.push(...lines.slice(cursor, edit.start), ...edit.lines);
+    keep(cursor, edit.start);
+    sourceLines.push(...edit.origins ?? edit.lines.map(() => edit.start));
     cursor = edit.end;
   }
   result.push(...lines.slice(cursor));
+  keep(cursor, lines.length);
   const headings = content.headings?.map(heading => ({
     ...heading,
     line: heading.line + edits.reduce((offset, edit) =>
       edit.end <= heading.line ? offset + edit.lines.length - (edit.end - edit.start) : offset, 0),
   }));
-  return { ...content, markdown: result.join('\n'), headings, linkedFiles: linkedFiles.size ? [...linkedFiles] : undefined };
+  return { ...content, markdown: result.join('\n'), sourceLines, headings, linkedFiles: linkedFiles.size ? [...linkedFiles] : undefined };
 }
 
 export function compileDiagrams(documentation: Documentation, extension: PageExtension): Documentation {

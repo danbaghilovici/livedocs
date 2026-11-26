@@ -1,7 +1,7 @@
 import { isBuiltin } from 'node:module';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import ts from 'typescript';
-import { normalizeTagLabels, placementError, type Diagnostic, type DocPart, type DocTag, type Documentation, type FileGraph, type FileRelation, type MarkdownContent, type SourceLocation } from './model.js';
+import { normalizeTagLabels, placementError, type Diagnostic, type DocPart, type DocTag, type Documentation, type C4Mark, type FileGraph, type FileRelation, type MarkdownContent, type SourceLocation } from './model.js';
 import { compilerDiagnostic, projectPath, sourceLocation, type Project } from './project.js';
 
 interface Export {
@@ -231,6 +231,22 @@ function tagLabelsFrom(tags: ReturnType<typeof realdocsTags>): string[] {
   return normalizeTagLabels(tags.filter(tag => tag.name === 'tag').map(tag => tag.value));
 }
 
+// Whether the tag sits inside a Markdown marker form (`<!-- @realdocs:c4 … -->` or `%% @realdocs:c4 …`),
+// which is part of the overview text and handled when the overview is compiled.
+function inMarkerForm(node: ts.JSDocTag): boolean {
+  const { text } = node.getSourceFile();
+  const start = node.getStart();
+  return /(?:<!--|%%)\s*$/.test(text.slice(text.lastIndexOf('\n', start - 1) + 1, start));
+}
+
+function c4MarksFrom(
+  annotations: ReturnType<typeof realdocsTags>,
+  at: (node: ts.JSDocTag) => { line: number; column: number },
+): C4Mark[] | undefined {
+  const marks = annotations.filter(tag => tag.name === 'c4' && !inMarkerForm(tag.node)).map(tag => ({ path: tag.value, ...at(tag.node) }));
+  return marks.length ? marks : undefined;
+}
+
 function symbolReferences(
   annotations: ReturnType<typeof realdocsTags>,
   error: (message: string, node: ts.Node) => void,
@@ -271,9 +287,20 @@ function fileOverview(file: ts.SourceFile): MarkdownContent | undefined {
     // The parsed JSDoc text trims indentation, which can change fenced Markdown content.
     const start = tag.node.getStart(header);
     const margin = comment.slice(comment.lastIndexOf('\n', start) + 1, start);
-    const body = comment.slice(tag.bodyStart, Math.min(tag.node.end, comment.length - 2)).replace(/\r\n?/g, '\n');
+    // A marker comment inside the overview text is not a tag, so the body continues past it.
+    const following = annotations.slice(annotations.indexOf(tag) + 1);
+    let bodyEnd = tag.node.end;
+    for (const next of following) {
+      if (next.name !== 'c4' || !inMarkerForm(next.node) || next.node.pos !== bodyEnd) break;
+      bodyEnd = next.node.end;
+    }
+    const body = comment.slice(tag.bodyStart, Math.min(bodyEnd, comment.length - 2)).replace(/\r\n?/g, '\n');
     const text = /^[ \t]+$/.test(margin) ? body.replaceAll(`\n${margin}`, '\n') : body.replace(/\n[ \t]*\*[ \t]?/g, '\n');
     const leadingLines = text.match(/^\s*/)?.[0].split('\n').length ?? 1;
+    const c4Marks = c4MarksFrom(annotations, node => {
+      const { line, character } = file.getLineAndCharacterOfPosition(range.pos + node.getStart(header));
+      return { line: line + 1, column: character + 1 };
+    });
     const placement: { category?: string; path?: string } = {};
     const annotationErrors: { message: string; line: number }[] = [];
     for (const item of annotations) {
@@ -291,6 +318,7 @@ function fileOverview(file: ts.SourceFile): MarkdownContent | undefined {
       zone: annotations.find(item => item.name === 'zone')?.value || undefined,
       ...placement,
       ...(annotationErrors.length && { annotationErrors }),
+      ...c4Marks && { c4Marks },
     };
   }
 }
@@ -424,6 +452,20 @@ function describeExports({ project }: Compilation, { checker, exportsByFile }: N
       const annotations = realdocsTags(tags).filter(({ node }) => !ts.isJSDoc(node.parent) ||
         !realdocsTags(node.parent.tags).some(item => item.name === 'file'));
       const key = declarationKey(entry.declaration.getSourceFile().fileName, entry.declaration.getStart());
+      const c4Marks = lookup.get(key) !== entry.id ? undefined : c4MarksFrom(annotations, node => {
+        const { line, column } = locate(node);
+        return { line, column };
+      });
+      // A symbol has no sections or diagrams, so a marker comment form in its JSDoc is misplaced.
+      if (lookup.get(key) === entry.id) {
+        for (const { name, node } of annotations) {
+          if (name === 'c4' && inMarkerForm(node)) {
+            diagnostics.push({
+              level: 'error', message: 'Place <!-- @realdocs:c4 … --> at the top of the page or on the first line after a heading.', location: locate(node),
+            });
+          }
+        }
+      }
       const references = lookup.get(key) === entry.id ? symbolReferences(annotations, (message, node) => {
         diagnostics.push({ level: 'error', message, location: locate(node) });
       }) : {};
@@ -434,6 +476,7 @@ function describeExports({ project }: Compilation, { checker, exportsByFile }: N
         description: docParts(entry.symbol.getDocumentationComment(checker), lookup, warn),
         tags: docTags(entry, checker, lookup, warn),
         tagLabels: tagLabelsFrom(annotations),
+        ...c4Marks && { c4Marks },
         ...references,
         location,
       };

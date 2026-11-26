@@ -66,7 +66,7 @@ ${site.tree.map(item).join('\n')}
 }
 
 // Applied in <head> so a saved light choice shows without a dark flash.
-const themeLoader = `try { const theme = localStorage.getItem('realdocs-theme'); if (theme === 'light' || theme === 'dark') document.documentElement.dataset.bsTheme = theme; } catch {}`;
+export const themeLoader = `try { const theme = localStorage.getItem('realdocs-theme'); if (theme === 'light' || theme === 'dark') document.documentElement.dataset.bsTheme = theme; } catch {}`;
 
 // Diagrams and the file map read colours once, so a page that has them reloads after a switch.
 const themeSwitcher = `(() => {
@@ -106,6 +106,8 @@ export function renderShell({ page, content, head, documentation, hasTags }: She
   const links = [
     hasTags ? `<li class="nav-item"><a class="nav-link" href="${link(file, 'tags.html')}">Tags</a></li>` : '',
     documentation.fileGraph ? `<li class="nav-item"><a class="nav-link" href="${link(file, 'file-map.html')}">File map</a></li>` : '',
+    // Added only with --c4, so other wikis keep their navbar markup byte for byte.
+    ...documentation.c4?.publish ? [`<li class="nav-item"><a class="nav-link" href="${link(file, 'c4.html')}">Architecture</a></li>`] : [],
     source ? `<li class="nav-item"><a class="nav-link" href="${escapeHtml(source)}">Source ↗</a></li>` : '',
     '<li class="nav-item"><button class="nav-link" id="wiki-theme" type="button" aria-label="Switch to light theme" title="Switch to light theme">☀</button></li>',
   ].join('\n');

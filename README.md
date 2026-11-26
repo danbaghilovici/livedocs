@@ -124,6 +124,24 @@ The homepage renders the root `README.md`, or the page named by `home`. Without 
 
 Put Mermaid `C4Context` and `C4Container` diagrams in a guide linked from the homepage. Put focused `C4Component` diagrams in a section guide or a source file overview. The diagrams describe the runtime architecture. The file map shows code relationships derived from the source. [Code-linked diagrams](#code-linked-diagrams) · [Mermaid C4 syntax](https://mermaid.js.org/syntax/c4.html)
 
+### Interactive C4 page
+
+Add `--c4` to an HTML `build` or `watch` to write `c4.html` beside the wiki home and link it as **Architecture** in the navigation bar. The page presents your `C4Context`, `C4Container`, and `C4Component` diagrams as one model. Double-click an element with a **+** badge to zoom into its level, or a **↗** badge to jump to a peer's level. Select any element to open a panel with Overview, Diagrams, Docs, and Code tabs. `--c4` fails with Markdown output and when no C4 diagram is found. Run `npx realdocs check --strict --c4` in CI to validate the model without building. It also reports when no C4 diagram is found.
+
+Give each element a descriptive camelCase alias and reuse it in every view, because the same alias is the same element everywhere. A `System_Boundary(alias)` or `Container_Boundary(alias)` whose alias matches an element is that element's zoom level, so `Container_Boundary(runtime, …)` in a component view holds the components of the `runtime` container. A boundary that matches no element only groups. An element's path joins its parents' aliases, such as `fulfillment.runtime.coordinator`.
+
+Attach content to an element with `@realdocs:c4 <path>`. Repeat the marker to attach the same content to several elements.
+
+| Place the marker | Form | Shows in |
+| --- | --- | --- |
+| Top of a Markdown page, with the other annotations | `<!-- @realdocs:c4 fulfillment -->` | Docs: page title and opening |
+| First non-blank line after a heading (several markers may stack there) | `<!-- @realdocs:c4 fulfillment -->` | Docs: that section |
+| Inside a top-level mermaid fence, before the diagram type line | `%% @realdocs:c4 fulfillment.runtime` | Diagrams |
+| `@realdocs:file` comment | `@realdocs:c4 fulfillment.runtime` | Code: the file overview |
+| An export's JSDoc | `@realdocs:c4 fulfillment.runtime.coordinator` | Code: the export |
+
+Section and diagram markers also work in `@realdocs:file` overviews. A marker anywhere else is an error. `check` also reports unknown paths, with a suggestion when the last segment exists under another parent, and aliases declared inside two boundaries. It warns about one label under two aliases, one alias with different labels, and top-level elements missing from every context view. Projects without `--c4` or markers see none of this. [Fulfillment example](examples/fulfillment/README.md#generate-html)
+
 ## RealDocs skills for agents
 
 From the root of the project you want to document, install the bundled skills with a version of RealDocs that supports `install-skill`.
@@ -281,6 +299,8 @@ Files appear in their category's zone, or else their containing folder's zone. A
 | `check` | Report source errors, stale JSDoc `@param` names, and unresolved `{@link}` references. |
 | `diff --base <ref>` | Report which documentation pages may be affected by changes since a Git revision. |
 | `watch` | Build once, then regenerate on saved changes using TypeScript's incremental compiler. |
+
+Pass `--c4` to `build` or `watch` (HTML only) to write `c4.html`, or to `check` to validate C4 aliases and `@realdocs:c4` markers. [Interactive C4 page](#interactive-c4-page)
 
 Repeat `--entry` for each public entry point. Paths on the command line are relative to the working directory. RealDocs reads `tsconfig.json` or `jsconfig.json` from that directory when present. Use `--project` to select a config in another directory. Entry files must be inside the selected config's directory. The compiler starts with those entries and configured declaration files, then follows imports.
 

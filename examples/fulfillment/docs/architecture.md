@@ -11,6 +11,7 @@ Follow the [system context](../src/index.ts#system-context) to see the actor and
 The [host integration guide](integrations.md) covers the wider checkout flow, including catalog weights, destination classification, and handoff. The [reservation lifecycle decision](decisions/reservation-lifecycle.md) records the boundary between the ledger and the host application.
 
 ## Preparing a shipment
+<!-- @realdocs:c4 fulfillment -->
 
 1. The caller supplies a [fulfillment order](../src/contracts.ts#FulfillmentOrder) and a [shipping zone](../src/contracts.ts#ShippingZone).
 2. [Shipment coordination](../src/fulfillment.ts#doc-fulfillment.prepare) validates the order lines and requests a [shipping quote](../src/shipping.js#doc-fulfillment.quote).

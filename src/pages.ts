@@ -4,7 +4,7 @@ import MarkdownIt from 'markdown-it';
 import { parse, postprocess, preprocess } from 'micromark';
 import { anchorFor, encodeHrefComponent, explicitAnchor, href, pageFile, symbolAnchor, wikiPath, type PageExtension } from './markdown.js';
 import { placeDocumentation } from './navigation.js';
-import { normalizeTagLabels, placementError, type AuthoredPage, type Diagnostic, type Documentation, type MarkdownContent } from './model.js';
+import { normalizeTagLabels, placementError, type AuthoredPage, type C4Mark, type Diagnostic, type Documentation, type MarkdownContent } from './model.js';
 import { projectPath, type Project } from './project.js';
 
 const markdown = {
@@ -58,17 +58,19 @@ function readPageAnnotations(text: string): MarkdownContent {
   const placement: { category?: string; path?: string } = {};
   const annotationErrors: { message: string; line: number }[] = [];
   let zone: string | undefined;
+  const c4Marks: C4Mark[] = [];
   let annotated = false;
   let firstLine = 0;
   for (; firstLine < lines.length; firstLine++) {
     const line = lines[firstLine].trim();
     if (!line) continue;
-    const annotation = /^<!--\s*@(?:realdocs|livedocs):(tag|zone|category|path)(?:[ \t]+(.*?))?\s*-->$/.exec(line);
+    const annotation = /^<!--\s*@(?:realdocs|livedocs):(tag|zone|category|path|c4)(?:[ \t]+(.*?))?\s*-->$/.exec(line);
     if (!annotation) break;
     annotated = true;
     const [, name, value = ''] = annotation;
     if (name === 'tag') tags.push(value);
     else if (name === 'zone') zone ??= value.trim() || undefined;
+    else if (name === 'c4') c4Marks.push({ path: value.trim(), line: firstLine + 1, column: lines[firstLine].indexOf('<!--') + 1 });
     else {
       const key = name as 'category' | 'path';
       const error = placementError(key, value, placement[key] !== undefined);
@@ -79,7 +81,7 @@ function readPageAnnotations(text: string): MarkdownContent {
   if (!annotated) return { markdown: text };
   return {
     markdown: lines.slice(firstLine).join('\n'), sourceLine: firstLine + 1, tagLabels: normalizeTagLabels(tags), zone,
-    ...placement, ...(annotationErrors.length && { annotationErrors }),
+    ...placement, ...(annotationErrors.length && { annotationErrors }), ...(c4Marks.length && { c4Marks }),
   };
 }
 

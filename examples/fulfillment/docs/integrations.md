@@ -9,6 +9,7 @@
 The host supplies a cart and a postal code. [Checkout](../src/integrations/checkout.ts#checkout) builds the order and reserves stock. The [dispatch adapter](../src/delivery/dispatch.ts#createDispatchRequest) and [message formatter](../src/integrations/notification.ts#shipmentMessage) consume that completed result.
 
 ```mermaid
+%% @realdocs:c4 fulfillment.runtime
 sequenceDiagram
   participant Host
   participant Checkout as Checkout workflow

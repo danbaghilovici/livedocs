@@ -5,6 +5,7 @@ import { performance } from 'node:perf_hooks';
 import { parseArgs } from 'node:util';
 import type ts from 'typescript';
 import { configName, readSite } from './config.js';
+import { compileC4 } from './c4.js';
 import { compileDiagrams } from './diagrams.js';
 import { renderMarkdownGraph } from './graph.js';
 import { renderWiki, type PageExtension } from './markdown.js';
@@ -39,6 +40,7 @@ const help = `Usage: realdocs <build|check|diff|watch> [--entry <file>] [--page 
   --out <dir>       Dedicated output directory. Defaults to ${defaultOutput}.
   --format <type>   Output format, markdown (default) or html.
   --graph           Add a file map with relationship types and zones.
+  --c4              Build the interactive C4 architecture page (c4.html; build and watch need --format html).
   --strict          Treat documentation warnings as build failures.
   --timings         Report compiler, rendering and output timings.
   --help            Show usage.
@@ -59,6 +61,7 @@ interface RunOptions {
   output: string;
   extension: PageExtension;
   graph: boolean;
+  c4: boolean;
   renderHtml?: typeof import('./html.js').renderHtmlWiki;
   includePages?: typeof import('./pages.js').includePages;
   releaseManifest?: (documentation: Documentation, files: ReadonlyMap<string, string>) => string;
@@ -68,7 +71,7 @@ interface RunOptions {
 
 function prepareDocumentation(extractedCode: Documentation, project: Project, options: RunOptions): Documentation {
   const inputs = options.includePages?.(extractedCode, project, options.extension) ?? placeDocumentation(extractedCode, options.extension);
-  return compileDiagrams(inputs, options.extension);
+  return compileC4(compileDiagrams(inputs, options.extension), options.extension, options.c4);
 }
 
 function validate(documentation: Documentation, strict?: boolean): boolean {
@@ -120,6 +123,7 @@ async function main(): Promise<void> {
       out: { type: 'string' },
       format: { type: 'string' },
       graph: { type: 'boolean' },
+      c4: { type: 'boolean' },
       strict: { type: 'boolean' },
       timings: { type: 'boolean' },
       help: { type: 'boolean', short: 'h' },
@@ -157,8 +161,10 @@ async function main(): Promise<void> {
   if (command === 'diff' && !values.base) throw new Error('Use realdocs diff --base <ref>.');
   if (command !== 'diff' && (values.base !== undefined || values.json)) throw new Error('--base and --json are only supported by realdocs diff.');
   if (values.version !== undefined && command !== 'build') throw new Error('--version is only supported by realdocs build.');
+  if (values.c4 && command !== 'build' && command !== 'check' && command !== 'watch') throw new Error('--c4 is only supported by realdocs build, check, and watch.');
   const format = values.format ?? 'markdown';
   if (format !== 'markdown' && format !== 'html') throw new Error(`Unknown output format ${format}. Use markdown or html.`);
+  if (values.c4 && command !== 'check' && format !== 'html') throw new Error('--c4 requires --format html.');
 
   const configPath = resolve(cwd, configName);
   const explicit = values.entry || values.project || (command === 'watch' && values.page);
@@ -176,8 +182,9 @@ async function main(): Promise<void> {
     output: resolve(cwd, values.out ?? (release ? `${defaultOutput}-releases/${release.version}` : defaultOutput)),
     extension: format === 'html' ? 'html' : 'md',
     graph: command === 'diff' || (values.graph ?? false),
+    c4: values.c4 ?? false,
     renderHtml: format === 'html' && (command === 'build' || command === 'watch') ? (await import('./html.js')).renderHtmlWiki : undefined,
-    includePages: site || project.pages.length || values.graph || command === 'diff' ? (await import('./pages.js')).includePages : undefined,
+    includePages: site || project.pages.length || values.graph || values.c4 || command === 'diff' ? (await import('./pages.js')).includePages : undefined,
     strict: values.strict,
     timings: values.timings,
   };

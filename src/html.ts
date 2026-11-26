@@ -4,11 +4,16 @@ import { createRequire } from 'node:module';
 import MarkdownIt from 'markdown-it';
 import { renderHtmlGraph } from './graph.js';
 import { explicitAnchor, href, renderWiki } from './markdown.js';
+import { renderC4Page } from './c4-page.js';
 import { bootstrapScript, bootstrapStyle, renderShell } from './shell.js';
 import type { Documentation } from './model.js';
 
 const require = createRequire(import.meta.url);
 const markdown = new MarkdownIt();
+export const renderMarkdownHtml = (source: string): string => {
+  const environment = {};
+  return markdown.renderer.render(markdown.parse(source, environment), markdown.options, environment);
+};
 const escape = markdown.utils.escapeHtml;
 const anchorAtStart = new RegExp(`^(?:${explicitAnchor.source})`, 'i');
 
@@ -33,7 +38,7 @@ for (const rule of ['fence', 'code_block'] as const) {
 }
 
 // Bootstrap styles the pages. These aliases give the file map and diagrams Bootstrap's colours.
-const style = `
+export const style = `
   :root {
     --wiki-page: var(--bs-body-bg);
     --wiki-surface: var(--bs-tertiary-bg);
@@ -57,18 +62,20 @@ const style = `
 const runtimePath = 'assets/mermaid.min.js';
 const runnerPath = 'assets/render-mermaid.js';
 const licensePath = 'assets/mermaid.LICENSE';
-const runner = `
-(async () => {
-  const mermaid = globalThis.mermaid;
-  if (!mermaid) return;
-  mermaid.initialize({
+// Shared with c4.html, which applies the same Mermaid theme from assets/c4.js.
+export const mermaidSetup = `  mermaid.initialize({
     // Mermaid 12 changed the default flowchart layout, look, and label width (to 120px, which
     // clips single-word labels such as export names); keep the established rendering.
     startOnLoad: false, securityLevel: 'strict',
     theme: document.documentElement.dataset.bsTheme === 'dark' ? 'dark' : 'default', layout: 'dagre', look: 'classic',
     flowchart: { wrappingWidth: 200 },
   });
-  const diagrams = document.querySelectorAll('pre > code.language-mermaid');
+`;
+const runner = `
+(async () => {
+  const mermaid = globalThis.mermaid;
+  if (!mermaid) return;
+${mermaidSetup}  const diagrams = document.querySelectorAll('pre > code.language-mermaid');
   for (const [index, code] of diagrams.entries()) {
     const source = code.textContent;
     try {
@@ -108,7 +115,7 @@ function hasTags(documentation: Documentation): boolean {
 }
 
 export function renderHtmlWiki(documentation: Documentation): { files: Map<string, string>; pages: number } {
-  let needsMermaid = false;
+  let needsMermaid = documentation.c4?.publish === true;
   let graphAssets: ReturnType<typeof renderHtmlGraph>['assets'] | undefined;
   const tagged = hasTags(documentation);
   const files = renderWiki(documentation, 'html', page => {
@@ -150,6 +157,9 @@ export function renderHtmlWiki(documentation: Documentation): { files: Map<strin
     files.set(runtimePath, runtime);
     files.set(runnerPath, runner);
     files.set(licensePath, license);
+  }
+  if (documentation.c4?.publish) {
+    for (const [path, content] of renderC4Page(documentation, renderMarkdownHtml)) files.set(path, content);
   }
   return { files, pages };
 }
