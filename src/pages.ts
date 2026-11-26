@@ -3,7 +3,7 @@ import { posix, resolve } from 'node:path';
 import MarkdownIt from 'markdown-it';
 import { parse, postprocess, preprocess } from 'micromark';
 import { anchorFor, encodeHrefComponent, explicitAnchor, href, symbolAnchor, wikiPath, type PageExtension } from './markdown.js';
-import { normalizeTagLabels, type AuthoredPage, type Diagnostic, type Documentation, type MarkdownContent } from './model.js';
+import { normalizeTagLabels, type AuthoredPage, type C4Mark, type Diagnostic, type Documentation, type MarkdownContent } from './model.js';
 import { projectPath, type Project } from './project.js';
 
 const markdown = {
@@ -55,19 +55,21 @@ function readPageAnnotations(text: string): MarkdownContent {
   const lines = text.split('\n');
   const tags: string[] = [];
   let zone: string | undefined;
+  const c4Marks: C4Mark[] = [];
   let annotated = false;
   let firstLine = 0;
   for (; firstLine < lines.length; firstLine++) {
     const line = lines[firstLine].trim();
     if (!line) continue;
-    const annotation = /^<!--\s*@(?:realdocs|livedocs):(tag|zone)(?:[ \t]+(.*?))?\s*-->$/.exec(line);
+    const annotation = /^<!--\s*@(?:realdocs|livedocs):(tag|zone|c4)(?:[ \t]+(.*?))?\s*-->$/.exec(line);
     if (!annotation) break;
     annotated = true;
     if (annotation[1] === 'tag') tags.push(annotation[2] ?? '');
+    else if (annotation[1] === 'c4') c4Marks.push({ path: annotation[2]?.trim() ?? '', line: firstLine + 1, column: lines[firstLine].indexOf('<!--') + 1 });
     else zone ??= annotation[2]?.trim() || undefined;
   }
   if (!annotated) return { markdown: text };
-  return { markdown: lines.slice(firstLine).join('\n'), sourceLine: firstLine + 1, tagLabels: normalizeTagLabels(tags), zone };
+  return { markdown: lines.slice(firstLine).join('\n'), sourceLine: firstLine + 1, tagLabels: normalizeTagLabels(tags), zone, ...c4Marks.length ? { c4Marks } : {} };
 }
 
 function headingsIn(content: MarkdownContent, extension: PageExtension, taken = new Set<string>()) {

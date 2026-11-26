@@ -29,6 +29,7 @@ export interface DocumentedSymbol {
   description: DocPart[];
   tags: DocTag[];
   tagLabels?: string[];
+  c4Marks?: C4Mark[];
   docId?: string;
   docUses?: string[];
   location: SourceLocation;
@@ -40,6 +41,7 @@ export interface MarkdownContent {
   sourceLine?: number;
   tagLabels?: string[];
   zone?: string;
+  c4Marks?: C4Mark[];
   linkedFiles?: string[];
 }
 

@@ -1,4 +1,5 @@
 import MarkdownIt from 'markdown-it';
+import { collectC4Items, hasC4Markers } from './c4-markers.js';
 import { parseC4View } from './c4-views.js';
 import { wikiPath, type PageExtension } from './markdown.js';
 import type {
@@ -27,12 +28,6 @@ interface Declaration {
 }
 
 const markdown = new MarkdownIt({ html: true });
-const marker = /@(?:realdocs|livedocs):c4\b/;
-
-const isMarked = (documentation: Documentation): boolean =>
-  [...documentation.pages ?? [], ...documentation.modules.flatMap(module => module.overview ?? [])]
-    .some(content => marker.test(content.markdown));
-
 function collectViews(documentation: Documentation, extension: PageExtension): Placed[] {
   const views: Placed[] = [];
   const scan = (content: MarkdownContent, origin: string, href: string, fallback: string): void => {
@@ -238,12 +233,17 @@ function buildModel(views: Placed[], publish: boolean, diagnostics: Diagnostic[]
 }
 
 export function compileC4(documentation: Documentation, extension: PageExtension, enabled: boolean): Documentation {
-  if (!enabled && !isMarked(documentation)) return documentation;
+  if (!enabled && !hasC4Markers(documentation)) return documentation;
   const views = collectViews(documentation, extension);
   const diagnostics: Diagnostic[] = [];
   if (enabled && !views.length) {
     diagnostics.push({ level: 'error', message: '--c4 found no C4Context, C4Container, or C4Component diagrams in the wiki inputs. Add one to a selected guide or @realdocs:file overview.' });
   }
   const c4 = buildModel(views, enabled, diagnostics);
-  return { ...documentation, diagnostics: [...documentation.diagnostics, ...diagnostics], c4 };
+  const collected = collectC4Items(documentation, c4, extension, diagnostics);
+  return {
+    ...collected.documentation,
+    diagnostics: [...documentation.diagnostics, ...diagnostics],
+    c4: { ...c4, items: collected.items },
+  };
 }

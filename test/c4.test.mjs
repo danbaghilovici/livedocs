@@ -279,3 +279,108 @@ System_Boundary(x, "X") {
   assert.match(result.stderr, /docs\/a\.md:\d+:\d+: error: C4 element x is nested inside itself\./);
   assert.equal(model.elements.find(e => e.alias === 'x').path, 'x');
 });
+
+const marked = t => fixture(t, {
+  'docs/architecture.md': `<!-- @realdocs:tag architecture -->
+<!-- @realdocs:c4 shop -->
+# Architecture
+
+${fence(context)}
+## Containers
+
+${fence(serving)}
+## Order API notes
+<!-- @realdocs:c4 shop.api -->
+
+The API owns [checkout](../src/api.ts#checkout).
+
+### Retries
+
+Retry details.
+
+## Unrelated
+
+${'```mermaid'}
+%% @realdocs:c4 shop.api
+sequenceDiagram
+  Web->>API: POST /orders
+${'```'}
+`,
+  'docs/adr.md': '<!-- @realdocs:c4 shop.api -->\n# ADR 1: Use Node\n\nWe use Node.js.\n\n## Context\n\nLong text.\n',
+  'docs/api.md': `# Order API\n\n${fence(apiComponents)}`,
+  'src/api.ts': `/**
+ * @realdocs:file Order API entry point.
+ *
+ * Second paragraph.
+ * @realdocs:c4 shop.api
+ */
+/**
+ * Validates an order.
+ *
+ * More detail.
+ * @realdocs:c4 shop.api.checkout
+ */
+export function checkout(order: string): boolean { return !!order; }
+`,
+});
+const markedArgs = ['--entry', 'src/api.ts', '--page', 'docs/architecture.md', '--page', 'docs/adr.md', '--page', 'docs/api.md'];
+
+test('turns each marker form into a panel item', t => {
+  const { model } = dumpModel(marked(t), ...markedArgs);
+  const items = model.items.map(i => [i.path, i.tab, i.kind, i.title]);
+  assert.deepEqual(items, [
+    ['shop', 'docs', 'page', 'Architecture'],
+    ['shop.api', 'docs', 'section', 'Order API notes'],
+    ['shop.api', 'diagrams', 'diagram', 'Unrelated'],
+    ['shop.api', 'docs', 'page', 'ADR 1: Use Node'],
+    ['shop.api', 'code', 'file', 'src/api.ts'],
+    ['shop.api.checkout', 'code', 'symbol', 'checkout'],
+  ]);
+  const section = model.items[1];
+  assert.match(section.markdown, /^## Order API notes\n[\s\S]*### Retries\n\nRetry details\.\n*$/);
+  assert.equal(section.href, 'pages/docs/architecture.html#order-api-notes');
+  assert.equal(model.items[3].markdown.trim(), 'We use Node.js.');
+  assert.match(model.items[2].mermaid, /^sequenceDiagram\n/);
+  assert.equal(model.items[4].markdown.trim(), 'Order API entry point.');
+  assert.deepEqual(model.items[4].exports, [{ name: 'checkout', href: 'modules/src/api.ts.html#symbol-checkout' }]);
+  assert.equal(model.items[5].signature, 'export function checkout(order: string): boolean');
+  assert.equal(model.items[5].summary, 'Validates an order.');
+});
+
+test('markers never appear in either wiki format', t => {
+  const project = marked(t);
+  for (const format of ['markdown', 'html']) {
+    project.run('build', ...markedArgs, '--format', format, '--out', `wiki-${format}`);
+    const ext = format === 'html' ? 'html' : 'md';
+    for (const page of ['pages/docs/architecture', 'pages/docs/adr', 'modules/src/api.ts']) {
+      assert.doesNotMatch(project.read(`wiki-${format}/${page}.${ext}`), /realdocs:c4/);
+    }
+  }
+  assert.match(project.read('wiki-html/tags.html'), /Architecture/); // the tag after the marker still applies
+});
+
+test('reports unknown, invalid, and misplaced markers', t => {
+  const project = c4Project(t);
+  project.write('docs/notes.md', `<!-- @realdocs:c4 shop.checkout -->
+# Notes
+
+Text.
+<!-- @realdocs:c4 shop.web -->
+
+## Bad
+<!-- @realdocs:c4 not a path -->
+
+${'```mermaid'}
+flowchart LR
+%% @realdocs:c4 shop.web
+  A --> B
+${'```'}
+`);
+  project.write('docs/api.md', `# Order API\n\n${fence(apiComponents)}`);
+  const result = project.result('check', ...pages, '--page', 'docs/notes.md');
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /docs\/notes\.md:1:\d+: error: Unknown C4 element path shop\.checkout\. Did you mean shop\.api\.checkout\?/);
+  assert.match(result.stderr, /docs\/notes\.md:5:\d+: error: Place <!-- @realdocs:c4 … --> at the top of the page or on the first line after a heading\./);
+  assert.match(result.stderr, /docs\/notes\.md:8:\d+: error: Invalid @realdocs:c4 path "not a path"\. Use aliases separated by dots, such as shop\.api\./);
+  assert.match(result.stderr, /docs\/notes\.md:12:\d+: error: Place %% @realdocs:c4 … before the diagram type line\./);
+});

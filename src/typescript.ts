@@ -1,7 +1,7 @@
 import { isBuiltin } from 'node:module';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import ts from 'typescript';
-import { normalizeTagLabels, type Diagnostic, type DocPart, type DocTag, type Documentation, type FileGraph, type FileRelation, type MarkdownContent, type SourceLocation } from './model.js';
+import { normalizeTagLabels, type Diagnostic, type DocPart, type DocTag, type Documentation, type C4Mark, type FileGraph, type FileRelation, type MarkdownContent, type SourceLocation } from './model.js';
 import { compilerDiagnostic, projectPath, sourceLocation, type Project } from './project.js';
 
 interface Export {
@@ -231,6 +231,14 @@ function tagLabelsFrom(tags: ReturnType<typeof realdocsTags>): string[] {
   return normalizeTagLabels(tags.filter(tag => tag.name === 'tag').map(tag => tag.value));
 }
 
+function c4MarksFrom(
+  annotations: ReturnType<typeof realdocsTags>,
+  at: (node: ts.JSDocTag) => { line: number; column: number },
+): C4Mark[] | undefined {
+  const marks = annotations.filter(tag => tag.name === 'c4').map(tag => ({ path: tag.value, ...at(tag.node) }));
+  return marks.length ? marks : undefined;
+}
+
 function symbolReferences(
   annotations: ReturnType<typeof realdocsTags>,
   error: (message: string, node: ts.Node) => void,
@@ -274,11 +282,16 @@ function fileOverview(file: ts.SourceFile): MarkdownContent | undefined {
     const body = comment.slice(tag.bodyStart, Math.min(tag.node.end, comment.length - 2)).replace(/\r\n?/g, '\n');
     const text = /^[ \t]+$/.test(margin) ? body.replaceAll(`\n${margin}`, '\n') : body.replace(/\n[ \t]*\*[ \t]?/g, '\n');
     const leadingLines = text.match(/^\s*/)?.[0].split('\n').length ?? 1;
+    const c4Marks = c4MarksFrom(annotations, node => {
+      const { line, character } = file.getLineAndCharacterOfPosition(range.pos + node.getStart(header));
+      return { line: line + 1, column: character + 1 };
+    });
     return {
       markdown: text.trim(),
       sourceLine: file.getLineAndCharacterOfPosition(range.pos + start).line + leadingLines,
       tagLabels: tagLabelsFrom(annotations),
       zone: annotations.find(item => item.name === 'zone')?.value || undefined,
+      ...c4Marks && { c4Marks },
     };
   }
 }
@@ -403,6 +416,10 @@ function describeExports({ project }: Compilation, { checker, exportsByFile }: N
       const tags = (entry.symbol.declarations ?? [entry.declaration]).flatMap(declaration => ts.getJSDocTags(declaration));
       const annotations = realdocsTags(tags).filter(({ node }) => !ts.isJSDoc(node.parent) ||
         !realdocsTags(node.parent.tags).some(item => item.name === 'file'));
+      const c4Marks = c4MarksFrom(annotations, node => {
+        const { line, column } = locate(node);
+        return { line, column };
+      });
       const key = declarationKey(entry.declaration.getSourceFile().fileName, entry.declaration.getStart());
       const references = lookup.get(key) === entry.id ? symbolReferences(annotations, (message, node) => {
         diagnostics.push({ level: 'error', message, location: locate(node) });
@@ -414,6 +431,7 @@ function describeExports({ project }: Compilation, { checker, exportsByFile }: N
         description: docParts(entry.symbol.getDocumentationComment(checker), lookup, warn),
         tags: docTags(entry, checker, lookup, warn),
         tagLabels: tagLabelsFrom(annotations),
+        ...c4Marks && { c4Marks },
         ...references,
         location,
       };
