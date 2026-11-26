@@ -96,3 +96,28 @@ export interface FileGraph {
 export function normalizeTagLabels(labels: readonly string[]): string[] {
   return [...new Set(labels.map(label => label.trim().toLowerCase().normalize('NFC').replace(/\s+/gu, '-')).filter(Boolean))];
 }
+
+export interface C4Mark { path: string; line: number; column: number }
+
+export interface C4Element {
+  alias: string;
+  kind: string;
+  label: string;
+  technology?: string;
+  description?: string;
+  line: number;
+}
+export interface C4Boundary { alias: string; kind: string; label: string; parent?: string; line: number }
+export interface C4Relationship { from: string; to: string; label: string; technology?: string }
+
+export interface C4View {
+  type: 'C4Context' | 'C4Container' | 'C4Component';
+  title: string;
+  elements: (C4Element & { boundary?: string })[];
+  boundaries: C4Boundary[];
+  relationships: C4Relationship[];
+  layout?: string;
+  source: string;
+  marks: C4Mark[];
+  misplacedMarks: C4Mark[];
+}
