@@ -1,5 +1,7 @@
 import { posix, resolve } from 'node:path';
-import type { DocPart, DocTag, Documentation, DocumentationSection, DocumentedSymbol, MarkdownContent } from './model.js';
+import type {
+  DocPart, DocTag, Documentation, DocumentationSection, DocumentedSymbol, MarkdownContent, NavGroup, NavItem, SiteMap,
+} from './model.js';
 import { projectPath } from './project.js';
 
 interface Address {
@@ -7,9 +9,47 @@ interface Address {
   anchor: string;
 }
 
-type PageBlock = string | { anchor: string } | MarkdownContent;
-type PageRenderer = (file: string, title: string, blocks: readonly PageBlock[], section?: DocumentationSection) => string;
+export type PageBlock = string | { anchor: string } | MarkdownContent;
 export type PageExtension = 'md' | 'html';
+
+export interface Crumb {
+  label: string;
+  file: string;
+}
+
+export interface PageContext {
+  file: string;
+  title: string;
+  blocks: readonly PageBlock[];
+  /** Ancestors from Home down, excluding the page itself; empty on the home page. */
+  crumbs: readonly Crumb[];
+  section?: DocumentationSection;
+}
+
+export type PageRenderer = (page: PageContext) => string;
+
+/** The ancestors of a page or group page in the navigation tree, starting at Home. */
+export function crumbsFor(site: SiteMap, file: string): Crumb[] {
+  if (file === site.home) return [];
+  const search = (nodes: readonly NavItem[], trail: Crumb[]): Crumb[] | undefined => {
+    for (const node of nodes) {
+      if (node.kind === 'page') {
+        if (node.file === file) return trail;
+        continue;
+      }
+      if (node.file === file) return trail;
+      const found = search(node.children, [...trail, { label: node.label, file: node.file }]);
+      if (found) return found;
+    }
+  };
+  const home = { label: 'Home', file: site.home };
+  return search(site.tree, [home]) ?? [home];
+}
+
+/** A Markdown breadcrumb line, such as `[Home](../index.md) › [Decisions](index.md)`. */
+export function crumbLine(crumbs: readonly Crumb[], file: string): string {
+  return crumbs.map(crumb => `[${escapeText(crumb.label)}](${href(file, crumb.file) || encodeHrefComponent(posix.basename(crumb.file))})`).join(' › ');
+}
 
 /**
  * An anchor authored as an empty `<a id="…"></a>` or `<a name="…"></a>` element, the form GitHub
@@ -22,7 +62,7 @@ function anchorTag(id: string): string {
   return `<a id="${id}"></a>`;
 }
 
-const markdownPage: PageRenderer = (_file, _title, blocks) => blocks.map(block => {
+const markdownPage: PageRenderer = ({ file, blocks, crumbs }) => [crumbs.length ? crumbLine(crumbs, file) : '', ...blocks].filter(Boolean).map(block => {
   if (typeof block === 'string') return block;
   if ('anchor' in block) return anchorTag(block.anchor);
   const headings = new Map(block.headings?.map(heading => [heading.line, heading]));
@@ -98,6 +138,11 @@ export function wikiPath(name: string, directory: 'modules' | 'pages', extension
   return [directory, ...folders, `${pageName}.${extension}`].join('/');
 }
 
+/** The output file of a page or entry: its placed route, or the path that mirrors its source. */
+export function pageFile(documentation: Documentation, name: string, kind: 'modules' | 'pages', extension: PageExtension): string {
+  return documentation.site?.routes[name]?.file ?? wikiPath(name, kind, extension);
+}
+
 function docText(parts: DocPart[], file: string, addresses: ReadonlyMap<string, Address>): string {
   return parts.map(part => {
     if (!part.link) return part.code ? codeSpan(part.text) : part.text;
@@ -148,8 +193,8 @@ export function renderWiki(
   const tagged = new Map<string, string[]>();
   const home = `index.${extension}`;
   const tagIndex = `tags.${extension}`;
-  const modules = documentation.modules.map(module => ({ ...module, file: wikiPath(module.name, 'modules', extension) }));
-  const pages = (documentation.pages ?? []).map(page => ({ ...page, file: wikiPath(page.name, 'pages', extension) }));
+  const modules = documentation.modules.map(module => ({ ...module, file: pageFile(documentation, module.name, 'modules', extension) }));
+  const pages = (documentation.pages ?? []).map(page => ({ ...page, file: pageFile(documentation, page.name, 'pages', extension) }));
 
   function indexTags(tags: string[] | undefined, label: string, file: string, anchor?: string): void {
     if (!tags?.length) return;
@@ -173,62 +218,20 @@ export function renderWiki(
 
   const navigation = documentation.navigation;
   const title = navigation?.title ?? 'Project documentation';
-  const sections = (navigation?.sections ?? []).map(section => ({ ...section, file: `sections/${section.id}/index.${extension}` }));
-  const sectionsByFile = new Map<string, typeof sections>();
-  for (const section of sections) {
-    for (const name of [...section.entries, ...section.pages]) {
-      const owners = sectionsByFile.get(name) ?? [];
-      owners.push(section);
-      sectionsByFile.set(name, owners);
-    }
-  }
-  const sectionLinks = sections.map(section => `- [${escapeText(section.title)}](${href(home, section.file)})`);
-  const rootPages = navigation ? new Set(navigation.pages) : undefined;
-  const pageLinks = pages.filter(page => !rootPages || rootPages.has(page.name))
-    .map(page => `- [${escapeText(page.title)}](${href(home, page.file)})`);
-  const moduleLinks = navigation ? [] : modules.map(module => `- [${codeSpan(module.name)}](${href(home, module.file)})`);
-  const tagNavigation = tagged.size ? `[Tags](${href(home, tagIndex)})` : '';
-  const homeBlocks = [`# ${escapeText(title)}`];
-  if (extension === 'html' || navigation) {
-    const links = [tagNavigation];
-    if (extension === 'html' && documentation.fileGraph) links.push('[File map](#file-map-title)');
-    homeBlocks.push(links.filter(Boolean).join(' · '));
-    if (sectionLinks.length) homeBlocks.push('## Sections', sectionLinks.join('\n'));
-    if (pageLinks.length) homeBlocks.push('## Guides', pageLinks.join('\n'));
-    if (moduleLinks.length) homeBlocks.push('## Source reference', moduleLinks.join('\n'));
-  } else {
-    homeBlocks.push(tagNavigation, [...pageLinks, ...moduleLinks].join('\n\n'));
-  }
-  if (renderGraph) homeBlocks.push(renderGraph(home));
-  files.set(home, renderPage(home, title, homeBlocks.filter(Boolean)));
+  const site: SiteMap = documentation.site ?? { home, routes: {}, tree: [] };
+  const sections = new Map((navigation?.sections ?? []).map(section => [section.id, section]));
+  const render = (file: string, pageTitle: string, blocks: readonly PageBlock[], section?: DocumentationSection): void => {
+    files.set(file, renderPage({ file, title: pageTitle, blocks: blocks.filter(Boolean), crumbs: crumbsFor(site, file), section }));
+  };
+  const treeList = (nodes: readonly NavItem[], from: string, depth = 0): string[] => nodes.flatMap(node => [
+    `${'  '.repeat(depth)}- [${escapeText(node.label)}](${href(from, node.file)})`,
+    ...(node.kind === 'group' ? treeList(node.children, from, depth + 1) : []),
+  ]);
 
-  for (const section of sections) {
-    const { file } = section;
-    const entries = new Set(section.entries);
-    const guides = new Set(section.pages);
-    const links = [`[Home](${href(file, home)})`];
-    if (extension === 'html' && documentation.fileGraph) links.push('[File map](#file-map-title)');
-    const blocks = [`# ${escapeText(section.title)}`, links.join(' · ')];
-    const sectionPages = pages.filter(page => guides.has(page.name));
-    if (sectionPages.length) blocks.push('## Guides', sectionPages.map(page => `- [${escapeText(page.title)}](${href(file, page.file)})`).join('\n'));
-    const sectionModules = modules.filter(module => entries.has(module.name));
-    if (sectionModules.length) blocks.push('## Source reference', sectionModules.map(module => `- [${codeSpan(module.name)}](${href(file, module.file)})`).join('\n'));
-    if (renderGraph) blocks.push(renderGraph(file, section));
-    files.set(file, renderPage(file, section.title, blocks, section));
-  }
-
-  const breadcrumbs = (name: string, file: string): string => [
-    `[Home](${href(file, home)})`,
-    ...(sectionsByFile.get(name) ?? []).map(section => `[${escapeText(section.title)}](${href(file, section.file)})`),
-  ].join(' · ');
-  for (const page of pages) {
-    const blocks = [breadcrumbs(page.name, page.file), tagLinks(page.tagLabels, page.file, tagIndex), page];
-    files.set(page.file, renderPage(page.file, page.title, blocks.filter(Boolean)));
-  }
-  for (const module of modules) {
+  const pageBlocks = (page: typeof pages[number]): PageBlock[] => [tagLinks(page.tagLabels, page.file, tagIndex), page];
+  const moduleBlocks = (module: typeof modules[number]): PageBlock[] => {
     const blocks: PageBlock[] = [`# ${codeSpan(module.name)}`, tagLinks(module.overview?.tagLabels, module.file, tagIndex)];
     if (module.overview?.markdown) blocks.push(module.overview);
-    blocks.push(breadcrumbs(module.name, module.file));
     if (!module.symbols.length) blocks.push('This entry point has no exports.');
     for (const symbol of module.symbols) {
       const address = addresses.get(symbol.id)!;
@@ -247,15 +250,56 @@ export function renderWiki(
         blocks.push(`Source [${label}](${release.repository}/blob/${release.commit}/${path}#L${line})`);
       } else blocks.push(`Source ${label}`);
     }
-    files.set(module.file, renderPage(module.file, module.name, blocks.filter(Boolean)));
+    return blocks;
+  };
+  const pagesByName = new Map(pages.map(page => [page.name, page]));
+  const modulesByName = new Map(modules.map(module => [module.name, module]));
+  const authored = (name: string | undefined): { title: string; blocks: PageBlock[] } | undefined => {
+    const page = name === undefined ? undefined : pagesByName.get(name);
+    if (page) return { title: page.title, blocks: pageBlocks(page) };
+    const module = name === undefined ? undefined : modulesByName.get(name);
+    if (module) return { title: module.name, blocks: moduleBlocks(module) };
+  };
+
+  // Home: the home page's content, or a title; Markdown also lists the whole tree.
+  const homePage = authored(site.homeSource);
+  const homeBlocks: PageBlock[] = homePage?.blocks ?? [`# ${escapeText(title)}`];
+  const fileMap = `file-map.${extension}`;
+  if (extension === 'md' || !homePage) {
+    if (extension === 'md') {
+      const links = [tagged.size ? `[Tags](${href(home, tagIndex)})` : '', documentation.fileGraph ? `[File map](${href(home, fileMap)})` : ''];
+      homeBlocks.push(links.filter(Boolean).join(' · '));
+    }
+    if (site.tree.length) homeBlocks.push('## Contents', treeList(site.tree, home).join('\n'));
   }
+  render(home, homePage?.title ?? title, homeBlocks);
+
+  // Every group has a page: its authored index, or its label, followed by its direct children.
+  const groupPages = (nodes: readonly NavItem[]): void => {
+    for (const node of nodes) {
+      if (node.kind !== 'group') continue;
+      const index = authored(node.index);
+      const blocks = index?.blocks ?? [`# ${escapeText(node.label)}`];
+      if (node.children.length) blocks.push('## In this section', treeList(node.children, node.file).join('\n'));
+      const section = node.section === undefined ? undefined : sections.get(node.section);
+      if (section && renderGraph) blocks.push(renderGraph(node.file, section));
+      render(node.file, index?.title ?? node.label, blocks, section);
+      groupPages(node.children);
+    }
+  };
+  groupPages(site.tree);
+
+  const rendered = new Set(files.keys());
+  for (const page of pages) if (!rendered.has(page.file)) render(page.file, page.title, pageBlocks(page));
+  for (const module of modules) if (!rendered.has(module.file)) render(module.file, module.name, moduleBlocks(module));
+  if (documentation.fileGraph) render(fileMap, 'File map', [renderGraph?.(fileMap) ?? '']);
 
   if (tagged.size) {
-    const blocks: PageBlock[] = ['# Tags', `[Home](${href(tagIndex, home)})`];
+    const blocks: PageBlock[] = ['# Tags'];
     for (const tag of [...tagged.keys()].sort()) {
       blocks.push({ anchor: tagAnchor(tag) }, `## ${codeSpan(tag)}`, tagged.get(tag)!.join('\n'));
     }
-    files.set(tagIndex, renderPage(tagIndex, 'Tags', blocks));
+    render(tagIndex, 'Tags', blocks);
   }
   return files;
 }

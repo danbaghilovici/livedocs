@@ -1,6 +1,8 @@
 <!-- @realdocs:tag architecture -->
 <!-- @realdocs:tag inventory -->
 <!-- @realdocs:zone Decisions -->
+<!-- @realdocs:category Decisions -->
+<!-- @realdocs:path inventory/reservation-lifecycle -->
 
 # Reservation lifecycle decision
 

@@ -1,5 +1,5 @@
 import MarkdownIt from 'markdown-it';
-import { codeSpan, href, symbolAnchor, wikiPath, type PageExtension } from './markdown.js';
+import { codeSpan, href, pageFile, symbolAnchor, type PageExtension } from './markdown.js';
 import type { Diagnostic, Documentation, DocumentedSymbol, MarkdownContent } from './model.js';
 
 interface DiagramSymbol {
@@ -171,7 +171,7 @@ export function compileDiagrams(documentation: Documentation, extension: PageExt
   const diagnostics = [...documentation.diagnostics];
   const registry = new Map<string, DiagramSymbol>();
   for (const module of documentation.modules) {
-    const file = wikiPath(module.name, 'modules', extension);
+    const file = pageFile(documentation, module.name, 'modules', extension);
     for (const symbol of module.symbols) {
       if (!symbol.docId) continue;
       const previous = registry.get(symbol.docId);
@@ -203,9 +203,9 @@ export function compileDiagrams(documentation: Documentation, extension: PageExt
     modules: documentation.modules.map(module => ({
       ...module,
       overview: module.overview && compileContent(module.overview, module.name,
-        wikiPath(module.name, 'modules', extension), registry, diagnostics, extension),
+        pageFile(documentation, module.name, 'modules', extension), registry, diagnostics, extension),
     })),
     pages: documentation.pages?.map(page => compileContent(page, page.name,
-      wikiPath(page.name, 'pages', extension), registry, diagnostics, extension)),
+      pageFile(documentation, page.name, 'pages', extension), registry, diagnostics, extension)),
   };
 }

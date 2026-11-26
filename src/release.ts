@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { git } from './git.js';
-import { symbolAnchor, wikiPath, type PageExtension } from './markdown.js';
+import { pageFile, symbolAnchor, type PageExtension } from './markdown.js';
 import type { Documentation, Release } from './model.js';
 import { projectPath } from './project.js';
 
@@ -69,7 +69,7 @@ export function releaseManifest(release: Release, documentation: Documentation, 
     sources: Object.fromEntries(sources),
     symbols: documentation.modules.flatMap(module => module.symbols.map(symbol => ({
       id: symbol.docId ?? symbol.id,
-      page: `${wikiPath(module.name, 'modules', extension)}#${symbolAnchor(symbol)}`,
+      page: `${pageFile(documentation, module.name, 'modules', extension)}#${symbolAnchor(symbol)}`,
       source: { ...symbol.location, file: projectPath(root, resolve(directory, symbol.location.file)) },
     }))),
     files: Object.fromEntries([...files].map(([name, contents]) => [name, digest(contents)])),

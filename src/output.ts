@@ -2,7 +2,7 @@ import {
   existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmdirSync,
   rmSync, unlinkSync, writeFileSync,
 } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, posix } from 'node:path';
 
 // Preserve the manifest and lock names so older builds can share the same output directory.
 const manifest = '.livedocs-manifest.json';
@@ -133,6 +133,12 @@ export function writeWiki(directory: string, files: ReadonlyMap<string, string>)
   const next = join(lock, 'next');
   const backup = join(lock, 'previous');
   try {
+    for (const file of files.keys()) {
+      const path = posix.normalize(file);
+      if (path !== file || path.startsWith('../') || posix.isAbsolute(path)) {
+        throw new Error(`Refusing to write ${file}, which is not a plain path inside the output directory.`);
+      }
+    }
     const previous = managedFiles(directory);
     const unchanged = new Set<string>();
     for (const [file, content] of files) {

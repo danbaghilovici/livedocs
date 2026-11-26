@@ -1,6 +1,6 @@
 import { git } from './git.js';
 import { fileRelationships } from './graph.js';
-import { wikiPath, type PageExtension } from './markdown.js';
+import { pageFile, type PageExtension } from './markdown.js';
 import type { Documentation } from './model.js';
 import { projectPath, type Project } from './project.js';
 
@@ -68,7 +68,7 @@ export function reportImpact(
     }
   }
   const affected = [...impacts.keys()].sort().map(path => ({
-    input: path, page: wikiPath(path, targets.get(path)!, extension), reasons: impacts.get(path)!,
+    input: path, page: pageFile(documentation, path, targets.get(path)!, extension), reasons: impacts.get(path)!,
   }));
 
   if (json) console.log(JSON.stringify({ ...input, affected }, null, 2));
