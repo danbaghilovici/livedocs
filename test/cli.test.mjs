@@ -671,7 +671,8 @@ export const shipment = { ready: true };
   const home = project.read('wiki/index.html');
   assert.match(home, /^<!doctype html>/i);
   assert.match(home, /href="modules\/src\/index\.ts\.html"/);
-  assert.doesNotMatch(home, /<script/);
+  // The bundled Bootstrap script is the only one a page without diagrams loads.
+  assert.deepEqual(home.match(/<script[^>]*>/g), ['<script defer src="assets/bootstrap.bundle.min.js">']);
   assert.equal(existsSync(join(project.cwd, 'wiki/index.md')), false);
   assert.equal(existsSync(join(project.cwd, 'wiki/modules/src/index.ts.md')), false);
 
@@ -687,7 +688,8 @@ export const shipment = { ready: true };
   const shipping = project.read('wiki/modules/src/shipping.ts.html');
   assert.match(shipping, /id="symbol-shipment"/);
   assert.match(shipping, /&lt;script&gt;window\.exampleMarker/);
-  assert.doesNotMatch(shipping, /<script|href="javascript:|onmouseover="/);
+  assert.deepEqual(shipping.match(/<script[^>]*>/g), ['<script defer src="../../assets/bootstrap.bundle.min.js">']);
+  assert.doesNotMatch(shipping, /href="javascript:|onmouseover="/);
   assert.match(shipping, /&lt;a id=&quot;unsafe&quot; onmouseover=/);
   assert.match(shipping, /<a id="safe"><\/a>/);
 
