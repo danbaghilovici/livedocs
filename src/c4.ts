@@ -1,7 +1,7 @@
 import MarkdownIt from 'markdown-it';
 import { collectC4Items, hasC4Markers, sourceLineOf } from './c4-markers.js';
 import { parseC4View } from './c4-views.js';
-import { wikiPath, type PageExtension } from './markdown.js';
+import { wikiLink, wikiPath, type PageExtension } from './markdown.js';
 import type {
   C4Level, C4Model, C4ModelElement, C4PlacedView, C4View, Diagnostic, Documentation, MarkdownContent,
 } from './model.js';
@@ -39,7 +39,7 @@ function collectViews(documentation: Documentation, extension: PageExtension): P
       const view = parseC4View(token.content);
       if (!view) continue;
       views.push({
-        view, lines: token.content.split('\n'), title: view.title || heading || fallback, origin, href,
+        view, lines: token.content.split('\n'), title: view.title || heading || fallback, origin, href: wikiLink(href),
         locate: offset => sourceLineOf(content, token.map![0] + 1 + offset),
       });
     }
@@ -106,7 +106,8 @@ function derivePaths(all: Declaration[], aliases: Iterable<string>, parents: Map
 }
 
 function relationshipLine(placed: Placed, from: string, to: string, fallback: string): string {
-  const pattern = new RegExp(`^\\s*(?:Rel|BiRel)\\w*\\(\\s*${from}\\s*,\\s*${to}\\s*,`);
+  const escaped = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`^\\s*(?:Rel|BiRel)\\w*\\(\\s*${escaped(from)}\\s*,\\s*${escaped(to)}\\s*,`);
   return placed.lines.find(line => pattern.test(line))?.trim() ?? fallback;
 }
 
@@ -153,9 +154,10 @@ function warn(all: Declaration[], parents: Map<string, string>, elementBoundarie
     const first = labels.get(alias);
     if (!first) labels.set(alias, declaration);
     else if (first.label !== label) {
+      const side = (d: Declaration): string => d.boundary ? ' on its boundary' : '';
       once(`${alias}\0${label}\0${placed.origin}\0${placed.locate(declaration.line)}`, {
         level: 'warning', location: where(declaration),
-        message: `C4 element ${alias} is labeled "${label}" here and "${first.label}" in ${first.placed.origin}.`,
+        message: `C4 element ${alias} is labeled "${label}"${side(declaration)} here and "${first.label}"${side(first)} in ${first.placed.origin}.`,
       });
     }
     // Elements under a grouping boundary only fall back to that boundary.
@@ -240,6 +242,9 @@ export function compileC4(documentation: Documentation, extension: PageExtension
     diagnostics.push({ level: 'error', message: '--c4 found no C4Context, C4Container, or C4Component diagrams in the wiki inputs. Add one to a selected guide or @realdocs:file overview.' });
   }
   const c4 = buildModel(views, enabled, diagnostics);
+  if (enabled && views.length && !c4.levels.length) {
+    diagnostics.push({ level: 'error', message: '--c4 found C4 diagrams but no zoom levels. Add a C4Context view, or a System_Boundary or Container_Boundary whose alias names a declared element.' });
+  }
   const collected = collectC4Items(documentation, c4, extension, diagnostics);
   return {
     ...collected.documentation,

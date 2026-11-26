@@ -58,7 +58,6 @@ UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")`);
     { from: 'api', to: 'store', label: 'Writes', technology: undefined },
   ]);
   assert.equal(view.layout, 'UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")');
-  assert.deepEqual(view.marks, [{ path: 'shop.api', line: 0, column: 1 }]);
   assert.doesNotMatch(view.source, /@realdocs:c4/);
 });
 
@@ -74,8 +73,8 @@ Enterprise_Boundary(acme, "Acme") {
 }`);
   assert.deepEqual(view.boundaries.map(b => [b.alias, b.parent]), [['acme', undefined], ['shop', 'acme'], ['api', 'shop']]);
   assert.equal(view.elements[0].boundary, 'api');
-  assert.deepEqual(view.marks, []);
-  assert.deepEqual(view.misplacedMarks, [{ path: 'shop.api', line: 1, column: 1 }]);
+  assert.doesNotMatch(view.source, /@realdocs:c4/);
+  assert.match(view.source, /^C4Component\nEnterprise_Boundary/);
 });
 
 test('parses an indented fence body and a missing closing fence', () => {
@@ -192,7 +191,7 @@ System_Boundary(other, "Other") {
   const result = project.result('check', '--c4', '--page', 'docs/a.md');
   assert.equal(result.status, 1);
   assert.match(result.stderr, /docs\/a\.md:\d+:\d+: warning: C4 elements platform and platformDb in shop share the label "Platform DB"\. Use one alias for one element\./);
-  assert.match(result.stderr, /warning: C4 element api is labeled "Orders API" here and "Order API" in docs\/a\.md\./);
+  assert.match(result.stderr, /warning: C4 element api is labeled "Orders API" on its boundary here and "Order API" in docs\/a\.md\./);
   assert.match(result.stderr, /error: C4 element x is declared inside both api and other\./);
 });
 
@@ -604,4 +603,65 @@ test('the fulfillment example builds a strict C4 page with marked content', t =>
   assert.ok(model.items.some(i => i.path === 'fulfillment' && i.kind === 'section'));
   assert.ok(model.items.some(i => i.path === 'fulfillment.runtime' && i.kind === 'diagram'));
   assert.ok(model.items.some(i => i.path === 'fulfillment.runtime.coordinator' && i.kind === 'symbol'));
+});
+
+// --- final-review fixes ---
+
+test('rebasing never turns a link into a scheme URL', t => {
+  const project = shopProject(t, {
+    'docs/x.md': '# X\n\n## Notes\n<!-- @realdocs:c4 shop -->\n\n[a](../../javascript:alert(1)) [b](../data:text/html,hi) [c](../arch.md)\n',
+  });
+  const { model } = readModel(project, ...shopArgs, '--page', 'docs/x.md');
+  const html = model.items.find(i => i.kind === 'section').html;
+  const hrefs = [...html.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
+  assert.equal(hrefs.length, 3);
+  for (const href of hrefs.slice(0, 2)) assert.doesNotMatch(href, /^[a-z][a-z0-9+.-]*:/i, href);
+  assert.equal(hrefs[0], './javascript:alert(1)');
+});
+
+test('--c4 with views but no zoom levels is an error, and the client survives a missing root', t => {
+  const project = fixture(t, {
+    'docs/a.md': `# A\n\n${fence('C4Container\ntitle Lone\nSystem_Boundary(shop, "Shop") {\n  Container(api, "API", "Node", "Serves")\n}')}`,
+  });
+  for (const command of [['check', '--strict'], ['build', '--strict', '--format', 'html', '--out', 'wiki']]) {
+    const result = project.result(...command, '--c4', '--page', 'docs/a.md');
+    assert.equal(result.status, 1, command[0]);
+    assert.match(result.stderr, /error: --c4 found C4 diagrams but no zoom levels\. Add a C4Context view, or a System_Boundary or Container_Boundary whose alias names a declared element\./);
+  }
+  assert.match(readFileSync(new URL('../assets/c4.js', import.meta.url), 'utf8'), /levels\.has\(data\.root\)/);
+});
+
+test('the label warning says when a boundary carries the other label', t => {
+  const project = fixture(t, {
+    'docs/a.md': `# A\n\n${fence('C4Context\ntitle Ctx\nSystem(shop, "Shop system", "Sells")')}\n${fence('C4Container\ntitle Boxes\nSystem_Boundary(shop, "Shop") {\n  Container(api, "API", "Node", "Serves")\n}')}`,
+  });
+  const result = project.result('check', '--c4', '--page', 'docs/a.md');
+  assert.match(result.stderr, /warning: C4 element shop is labeled "Shop" on its boundary here and "Shop system" in docs\/a\.md\./);
+});
+
+test('item and view hrefs are encoded like the wiki home links', t => {
+  const project = fixture(t, {
+    'docs/C#/a.md': `# A\n\n${fence(context)}\n## Notes\n<!-- @realdocs:c4 shop -->\n\nText.\n`,
+  });
+  const { model } = readModel(project, '--page', 'docs/C#/a.md');
+  const home = project.read('wiki/index.html');
+  assert.match(home, /href="pages\/docs\/C%23\/a\.html"/);
+  assert.equal(model.items[0].href, 'pages/docs/C%23/a.html#notes');
+  assert.equal(model.levels[0].views[0].href, 'pages/docs/C%23/a.html');
+  assert.match(project.read('wiki/c4.html'), /<h1><a href="index\.html">/);
+});
+
+test('a comment-form marker in a symbol JSDoc is reported', t => {
+  const project = shopProject(t, {
+    'src/a.ts': '/**\n * Does a.\n * <!-- @realdocs:c4 nope.path -->\n */\nexport function a(): void {}\n',
+  });
+  const result = project.result('check', '--entry', 'src/a.ts', ...shopArgs);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /src\/a\.ts:3:\d+: error: Place <!-- @realdocs:c4 … --> at the top of the page or on the first line after a heading\./);
+});
+
+test('render-mermaid.js for a plain HTML build is unchanged', t => {
+  const project = fixture(t, { 'docs/a.md': `# A\n\n${fence('flowchart LR\n  A --> B')}` });
+  project.run('build', '--page', 'docs/a.md', '--format', 'html', '--out', 'wiki');
+  assert.equal(project.read('wiki/assets/render-mermaid.js'), readFileSync(new URL('./golden/render-mermaid.js', import.meta.url), 'utf8'));
 });

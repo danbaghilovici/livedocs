@@ -87,6 +87,12 @@ export function href(from: string, destination: string): string {
   return posix.relative(posix.dirname(from), destination).split('/').map(encodeHrefComponent).join('/');
 }
 
+// A link from the wiki root to an output path, encoded the way the wiki's own links are.
+export function wikiLink(path: string, fragment?: string): string {
+  const encoded = path.split('/').map(encodeHrefComponent).join('/');
+  return fragment === undefined ? encoded : `${encoded}#${fragment.replace(/[<>()[\]\\\s]/g, encodeHrefComponent)}`;
+}
+
 export function wikiPath(name: string, directory: 'modules' | 'pages', extension: PageExtension): string {
   const segments = name.split('/');
   const sourceName = segments.pop()!;

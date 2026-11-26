@@ -1,4 +1,4 @@
-import type { C4Boundary, C4Mark, C4View } from './model.js';
+import type { C4Boundary, C4View } from './model.js';
 
 export const markerPattern = /^\s*%%\s*@(?:realdocs|livedocs):c4(?:\s+(.*?))?\s*$/;
 
@@ -26,25 +26,19 @@ const optional = (value: string | undefined): string | undefined => value || und
 
 export function parseC4View(body: string): C4View | undefined {
   const lines = body.split('\n');
-  const marks: C4Mark[] = [];
-  const misplacedMarks: C4Mark[] = [];
   const kept: string[] = [];
   let view: C4View | undefined;
   const stack: string[] = [];
 
   for (const [index, raw] of lines.entries()) {
     const line = raw.trim();
-    const marker = markerPattern.exec(raw);
-    if (marker) {
-      (view ? misplacedMarks : marks).push({ path: marker[1] ?? '', line: index, column: raw.indexOf('%%') + 1 });
-      continue;
-    }
+    if (markerPattern.test(raw)) continue;
     kept.push(raw);
     if (!line || line.startsWith('%%')) continue;
     if (!view) {
       const type = line.split(/\s+/)[0];
       if (!viewTypes.has(type)) return undefined;
-      view = { type: type as C4View['type'], title: '', elements: [], boundaries: [], relationships: [], source: '', marks, misplacedMarks };
+      view = { type: type as C4View['type'], title: '', elements: [], boundaries: [], relationships: [], source: '' };
       continue;
     }
     if (line.startsWith('title ')) { view.title = line.slice(6).trim(); continue; }

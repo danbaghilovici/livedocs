@@ -436,6 +436,16 @@ function describeExports({ project }: Compilation, { checker, exportsByFile }: N
         const { line, column } = locate(node);
         return { line, column };
       });
+      // A symbol has no sections or diagrams, so a marker comment form in its JSDoc is misplaced.
+      if (lookup.get(key) === entry.id) {
+        for (const { name, node } of annotations) {
+          if (name === 'c4' && inMarkerForm(node)) {
+            diagnostics.push({
+              level: 'error', message: 'Place <!-- @realdocs:c4 … --> at the top of the page or on the first line after a heading.', location: locate(node),
+            });
+          }
+        }
+      }
       const references = lookup.get(key) === entry.id ? symbolReferences(annotations, (message, node) => {
         diagnostics.push({ level: 'error', message, location: locate(node) });
       }) : {};

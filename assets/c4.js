@@ -3,6 +3,10 @@
   const data = JSON.parse(document.getElementById('c4-data').textContent);
   const levels = new Map(data.levels.map(level => [level.key, level]));
   const elements = new Map(data.elements.map(element => [element.alias, element]));
+  if (!levels.has(data.root)) {
+    $('.canvas').innerHTML = '<p class="empty">This page has no zoom levels. Add a C4Context view, or a System_Boundary or Container_Boundary whose alias names a declared element, and rebuild.</p>';
+    return;
+  }
   const css = getComputedStyle(document.documentElement);
   const color = name => css.getPropertyValue('--wiki-' + name).trim();
   const esc = text => String(text ?? '').replace(/[&<>"']/g, char => `&#${char.charCodeAt(0)};`);

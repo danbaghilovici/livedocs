@@ -122,8 +122,6 @@ export interface C4View {
   relationships: C4Relationship[];
   layout?: string;
   source: string;
-  marks: C4Mark[];
-  misplacedMarks: C4Mark[];
 }
 
 export interface C4PlacedView { title: string; type: C4View['type']; origin: string; href: string; source: string; relationships: C4Relationship[] }

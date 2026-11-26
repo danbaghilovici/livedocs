@@ -1,6 +1,6 @@
 import MarkdownIt from 'markdown-it';
 import { markerPattern } from './c4-views.js';
-import { symbolAnchor, wikiPath, type PageExtension } from './markdown.js';
+import { symbolAnchor, wikiLink, wikiPath, type PageExtension } from './markdown.js';
 import type { C4Item, C4Mark, C4Model, Diagnostic, Documentation, MarkdownContent } from './model.js';
 
 const markdown = new MarkdownIt({ html: true });
@@ -144,7 +144,7 @@ export function collectC4Items(
     ].sort((a, b) => a.line - b.line);
     for (const { path, line, column, heading, diagram } of marks) {
       if (!accept({ path, line: sourceLineOf(content, line), column }, file)) continue;
-      const target = heading?.id ? `${href}#${heading.id}` : href;
+      const target = wikiLink(href, heading?.id);
       if (diagram) {
         items.push({ path, tab: 'diagrams', kind: 'diagram', title: diagram.title || fallback, source: file, href: target, mermaid: diagram.mermaid, origin: href });
       } else if (heading) {
@@ -169,7 +169,7 @@ export function collectC4Items(
         const start = leading ? first.end : 0;
         const next = scan.headings.find(heading => heading.line >= start);
         items.push({
-          path: mark.path, tab: 'docs', kind: 'page', title: page.title, source: page.name, href,
+          path: mark.path, tab: 'docs', kind: 'page', title: page.title, source: page.name, href: wikiLink(href),
           markdown: scan.lines.slice(start, next?.line ?? scan.lines.length).join('\n').trim(), origin: href,
         });
       }
@@ -182,9 +182,9 @@ export function collectC4Items(
       for (const mark of module.overview!.c4Marks ?? []) {
         if (!accept(mark, module.name)) continue;
         items.push({
-          path: mark.path, tab: 'code', kind: 'file', title: module.name, source: module.name, href,
+          path: mark.path, tab: 'code', kind: 'file', title: module.name, source: module.name, href: wikiLink(href),
           markdown: scan.lines.join('\n').trim().split(/\n\s*\n/)[0],
-          exports: module.symbols.map(symbol => ({ name: symbol.name, href: `${href}#${symbolAnchor(symbol)}` })),
+          exports: module.symbols.map(symbol => ({ name: symbol.name, href: wikiLink(href, symbolAnchor(symbol)) })),
           origin: href,
         });
       }
@@ -193,7 +193,7 @@ export function collectC4Items(
       for (const mark of symbol.c4Marks ?? []) {
         if (!accept(mark, symbol.location.file)) continue;
         items.push({
-          path: mark.path, tab: 'code', kind: 'symbol', title: symbol.name, source: module.name, href: `${href}#${symbolAnchor(symbol)}`,
+          path: mark.path, tab: 'code', kind: 'symbol', title: symbol.name, source: module.name, href: wikiLink(href, symbolAnchor(symbol)),
           signature: symbol.signatures[0],
           summary: symbol.description.map(part => part.text).join('').split(/\n\s*\n/)[0].trim() || undefined,
           origin: href,

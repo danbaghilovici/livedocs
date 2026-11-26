@@ -21,7 +21,8 @@ function rebase(html: string, origin: string): string {
     const path = split < 0 ? url : url.slice(0, split);
     const suffix = split < 0 ? '' : url.slice(split);
     const target = path ? posix.normalize(posix.join(directory, path)) : encodedOrigin;
-    return `${prefix}${target}${suffix}"`;
+    // A `..` run can leave a scheme-looking first segment behind; keep it a relative path.
+    return `${prefix}${/^[a-z][a-z0-9+.-]*:/i.test(target) ? `./${target}` : target}${suffix}"`;
   });
 }
 
@@ -48,7 +49,7 @@ ${mermaidSetup}};</script>
 </head>
 <body>
 <header>
-  <h1>${escape(title)}</h1>
+  <h1><a href="index.html">${escape(title)}</a></h1>
   <nav class="crumbs" aria-label="Zoom level"></nav>
   <span class="level"></span>
   <div class="variants" aria-label="Source views"></div>

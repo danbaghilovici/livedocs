@@ -39,7 +39,7 @@ const help = `Usage: realdocs <build|check|diff|watch> [--entry <file>] [--page 
   --out <dir>       Dedicated output directory. Defaults to ${defaultOutput}.
   --format <type>   Output format, markdown (default) or html.
   --graph           Add a file map with relationship types and zones.
-  --c4              Build the interactive C4 architecture page (c4.html; HTML only).
+  --c4              Build the interactive C4 architecture page (c4.html; build and watch need --format html).
   --strict          Treat documentation warnings as build failures.
   --timings         Report compiler, rendering and output timings.
   --help            Show usage.
