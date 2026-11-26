@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, watchFile, writeFileSync } from 'node:fs';
+import { existsSync, watchFile } from 'node:fs';
 import { resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { parseArgs } from 'node:util';
@@ -80,8 +80,6 @@ function validate(documentation: Documentation, strict?: boolean): boolean {
 
 function document(extractedCode: Documentation, project: Project, options: RunOptions, started: number): boolean {
   const documentation = prepareDocumentation(extractedCode, project, options);
-  // Temporary debug hook, removed once c4.html exists.
-  if (options.check && process.env.REALDOCS_C4_DUMP) writeFileSync(process.env.REALDOCS_C4_DUMP, JSON.stringify(documentation.c4 ?? null));
   const extracted = performance.now();
   if (!validate(documentation, options.strict)) return false;
 

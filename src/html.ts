@@ -3,10 +3,15 @@ import { createRequire } from 'node:module';
 import MarkdownIt from 'markdown-it';
 import { renderHtmlGraph } from './graph.js';
 import { explicitAnchor, href, renderWiki } from './markdown.js';
+import { renderC4Page } from './c4-page.js';
 import type { Documentation } from './model.js';
 
 const require = createRequire(import.meta.url);
 const markdown = new MarkdownIt();
+export const renderMarkdownHtml = (source: string): string => {
+  const environment = {};
+  return markdown.renderer.render(markdown.parse(source, environment), markdown.options, environment);
+};
 const escape = markdown.utils.escapeHtml;
 const anchorAtStart = new RegExp(`^(?:${explicitAnchor.source})`, 'i');
 
@@ -21,7 +26,7 @@ markdown.inline.ruler.before('html_inline', 'realdocs_anchor', (state, silent) =
 });
 markdown.renderer.rules.realdocs_anchor = (tokens, index) => `<a id="${escape(String(tokens[index].attrGet('id') ?? ''))}"></a>`;
 
-const style = `
+export const style = `
   :root {
     color-scheme: dark;
     --wiki-page: #101614;
@@ -69,11 +74,8 @@ const style = `
 const runtimePath = 'assets/mermaid.min.js';
 const runnerPath = 'assets/render-mermaid.js';
 const licensePath = 'assets/mermaid.LICENSE';
-const runner = `
-(async () => {
-  const mermaid = globalThis.mermaid;
-  if (!mermaid) return;
-  const style = getComputedStyle(document.documentElement);
+// Shared with c4.html, which applies the same Mermaid theme from assets/c4.js.
+export const mermaidSetup = `  const style = getComputedStyle(document.documentElement);
   const color = name => style.getPropertyValue('--wiki-' + name).trim();
   mermaid.initialize({
     // Mermaid 12 changed the default flowchart layout, look, and label width (to 120px, which
@@ -94,7 +96,12 @@ const runner = `
       component_bg_color: '#2e5144', component_border_color: '#619b86',
     },
   });
-  const diagrams = document.querySelectorAll('pre > code.language-mermaid');
+`;
+const runner = `
+(async () => {
+  const mermaid = globalThis.mermaid;
+  if (!mermaid) return;
+${mermaidSetup}  const diagrams = document.querySelectorAll('pre > code.language-mermaid');
   for (const [index, code] of diagrams.entries()) {
     const source = code.textContent;
     try {
@@ -138,7 +145,7 @@ ${directory ? `<div class="wiki-directory">\n${body}</div>\n${graph?.body ?? ''}
 }
 
 export function renderHtmlWiki(documentation: Documentation): { files: Map<string, string>; pages: number } {
-  let needsMermaid = false;
+  let needsMermaid = documentation.c4?.publish === true;
   let graphAssets: ReturnType<typeof renderHtmlGraph>['assets'] | undefined;
   const files = renderWiki(documentation, 'html', (file, title, blocks, section) => {
     let hasDiagram = false;
@@ -172,6 +179,9 @@ export function renderHtmlWiki(documentation: Documentation): { files: Map<strin
     files.set(runtimePath, runtime);
     files.set(runnerPath, runner);
     files.set(licensePath, license);
+  }
+  if (documentation.c4?.publish) {
+    for (const [path, content] of renderC4Page(documentation, renderMarkdownHtml)) files.set(path, content);
   }
   return { files, pages };
 }

@@ -132,15 +132,16 @@ const c4Project = t => fixture(t, {
   'docs/api.md': `# Order API\n\n${fence(apiComponents)}`,
   'docs/web.md': `# Web app\n\n${fence(webComponents)}`,
 });
-const dumpModel = (project, ...args) => {
-  const out = join(project.cwd, 'model.json');
-  const result = spawnSync(process.execPath, [cli, 'check', '--c4', '--format', 'html', ...args], { cwd: project.cwd, encoding: 'utf8', env: { ...process.env, REALDOCS_C4_DUMP: out } });
-  return { result, model: JSON.parse(readFileSync(out, 'utf8')) };
+const readModel = (project, ...args) => {
+  const result = spawnSync(process.execPath, [cli, 'build', '--c4', '--format', 'html', '--out', 'wiki', ...args], { cwd: project.cwd, encoding: 'utf8' });
+  const page = existsSync(join(project.cwd, 'wiki/c4.html')) ? project.read('wiki/c4.html') : '';
+  const data = /<script type="application\/json" id="c4-data">([\s\S]*?)<\/script>/.exec(page);
+  return { result, model: data ? JSON.parse(data[1]) : null };
 };
 const pages = ['--page', 'docs/architecture.md', '--page', 'docs/api.md', '--page', 'docs/web.md'];
 
 test('derives levels, paths, and home levels from C4 views', t => {
-  const { model } = dumpModel(c4Project(t), ...pages);
+  const { model } = readModel(c4Project(t), ...pages);
   const paths = Object.fromEntries(model.elements.map(e => [e.alias, e.path]));
   assert.deepEqual(paths, { customer: 'customer', shop: 'shop', payments: 'payments', web: 'shop.web', api: 'shop.api', ledger: 'shop.ledger', checkout: 'shop.api.checkout', cart: 'shop.web.cart' });
   assert.deepEqual(model.levels.map(l => [l.key, l.path, l.type, l.views.length]), [
@@ -155,14 +156,14 @@ test('derives levels, paths, and home levels from C4 views', t => {
 });
 
 test('peer references do not change paths', t => {
-  const { model } = dumpModel(c4Project(t), ...pages);
+  const { model } = readModel(c4Project(t), ...pages);
   // web appears outside the api boundary and api outside the web boundary.
   assert.equal(model.elements.find(e => e.alias === 'web').path, 'shop.web');
   assert.equal(model.elements.find(e => e.alias === 'api').path, 'shop.api');
 });
 
 test('merges a level built from several views when each has one boundary', t => {
-  const { model } = dumpModel(c4Project(t), ...pages);
+  const { model } = readModel(c4Project(t), ...pages);
   const merged = model.levels.find(l => l.key === 'shop').merged;
   assert.match(merged, /^C4Container\ntitle Containers of the shop \(all views merged\)\n/);
   assert.equal(merged.match(/Container\(api,/g).length, 1);
@@ -203,7 +204,7 @@ System_Boundary(shop, "Shop") {
 }
 System_Ext(bank, "Bank", "Moves money")
 Rel(api, bank, "Pays")`) });
-  const { result, model } = dumpModel(project, '--page', 'docs/a.md');
+  const { result, model } = readModel(project, '--page', 'docs/a.md');
   assert.equal(model.elements.find(e => e.alias === 'shop').path, 'shop');
   assert.equal(model.elements.find(e => e.alias === 'bank').home, 'shop');
   assert.match(result.stderr, /warning: C4 element bank is not shown in any C4Context view\./);
@@ -233,7 +234,7 @@ System_Boundary(bank, "Bank") {
     ContainerDb(ledger, "Ledger", "PostgreSQL", "Ledger")
   }
 }`) });
-  const { result, model } = dumpModel(project, '--page', 'docs/a.md');
+  const { result, model } = readModel(project, '--page', 'docs/a.md');
   assert.doesNotMatch(result.stderr, /declared inside both/);
   assert.equal(result.status, 0);
   assert.equal(model.elements.find(e => e.alias === 'orders').path, 'shop.orders');
@@ -251,7 +252,7 @@ System_Boundary(shop, "Shop") {
 System_Boundary(shop, "Shop") {
   Container(web, "Web", "React", "UI")
 }`) });
-  const { model } = dumpModel(project, '--page', 'docs/a.md');
+  const { model } = readModel(project, '--page', 'docs/a.md');
   const merged = model.levels.find(l => l.key === 'shop').merged;
   assert.match(merged, /\nSystem_Ext\(bank,[^\n]*\nSystem_Boundary\(shop, "Shop"\) \{\n  Container\(api,/);
   assert.doesNotMatch(merged, /  System_Ext\(bank/);
@@ -275,9 +276,11 @@ test('reports an element nested inside itself', t => {
 System_Boundary(x, "X") {
   System(x, "X", "Self")
 }`) });
-  const { result, model } = dumpModel(project, '--page', 'docs/a.md');
+  // A build stops on errors and writes no c4.html, so assert through check's diagnostics.
+  const result = project.result('check', '--c4', '--page', 'docs/a.md');
+  assert.equal(result.status, 1);
   assert.match(result.stderr, /docs\/a\.md:\d+:\d+: error: C4 element x is nested inside itself\./);
-  assert.equal(model.elements.find(e => e.alias === 'x').path, 'x');
+  assert.doesNotMatch(result.stderr, /TypeError|at .*\.js:\d+/);
 });
 
 const marked = t => fixture(t, {
@@ -326,7 +329,7 @@ export function checkout(order: string): boolean { return !!order; }
 const markedArgs = ['--entry', 'src/api.ts', '--page', 'docs/architecture.md', '--page', 'docs/adr.md', '--page', 'docs/api.md'];
 
 test('turns each marker form into a panel item', t => {
-  const { model } = dumpModel(marked(t), ...markedArgs);
+  const { model } = readModel(marked(t), ...markedArgs);
   const items = model.items.map(i => [i.path, i.tab, i.kind, i.title]);
   assert.deepEqual(items, [
     ['shop', 'docs', 'page', 'Architecture'],
@@ -337,11 +340,11 @@ test('turns each marker form into a panel item', t => {
     ['shop.api.checkout', 'code', 'symbol', 'checkout'],
   ]);
   const section = model.items[1];
-  assert.match(section.markdown, /^## Order API notes\n[\s\S]*### Retries\n\nRetry details\.\n*$/);
+  assert.match(section.html, /^<h2>Order API notes<\/h2>\n[\s\S]*<h3>Retries<\/h3>\n<p>Retry details\.<\/p>\n*$/);
   assert.equal(section.href, 'pages/docs/architecture.html#order-api-notes');
-  assert.equal(model.items[3].markdown.trim(), 'We use Node.js.');
+  assert.equal(model.items[3].html.trim(), '<p>We use Node.js.</p>');
   assert.match(model.items[2].mermaid, /^sequenceDiagram\n/);
-  assert.equal(model.items[4].markdown.trim(), 'Order API entry point.');
+  assert.equal(model.items[4].html.trim(), '<p>Order API entry point.</p>');
   assert.deepEqual(model.items[4].exports, [{ name: 'checkout', href: 'modules/src/api.ts.html#symbol-checkout' }]);
   assert.equal(model.items[5].signature, 'export function checkout(order: string): boolean');
   assert.equal(model.items[5].summary, 'Validates an order.');
@@ -409,13 +412,13 @@ test('section and diagram markers work inside a @realdocs:file overview', t => {
 export function b(): void {}
 `,
   });
-  const { result, model } = dumpModel(project, '--entry', 'src/b.ts', ...shopArgs);
+  const { result, model } = readModel(project, '--entry', 'src/b.ts', ...shopArgs);
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(model.items.map(i => [i.kind, i.path, i.title]), [
     ['file', 'shop', 'src/b.ts'], ['section', 'shop', 'Part'], ['diagram', 'shop.api', 'Part'],
   ]);
-  assert.equal(model.items[0].markdown.trim(), 'Overview first.');
-  assert.match(model.items[1].markdown, /Part text\./);
+  assert.equal(model.items[0].html.trim(), '<p>Overview first.</p>');
+  assert.match(model.items[1].html, /Part text\./);
   assert.match(model.items[2].mermaid, /^flowchart LR\n {2}A --> B$/);
   project.run('build', '--entry', 'src/b.ts', ...shopArgs, '--format', 'html', '--out', 'wiki');
   const html = project.read('wiki/modules/src/b.ts.html');
@@ -425,10 +428,11 @@ export function b(): void {}
 
 test('a multi-line marker comment is reported and never leaks into the page', t => {
   const project = shopProject(t, { 'docs/notes.md': '# Notes\n<!--\n@realdocs:c4 shop\n-->\n\nText.\n' });
-  const { result, model } = dumpModel(project, ...shopArgs, '--page', 'docs/notes.md');
+  // The error stops the build before c4.html is written, so the check run is the observable output.
+  const result = project.result('check', '--c4', ...shopArgs, '--page', 'docs/notes.md');
   assert.equal(result.status, 1);
   assert.match(result.stderr, /docs\/notes\.md:2:1: error: Place <!-- @realdocs:c4 … --> at the top/);
-  assert.deepEqual(model.items, []);
+  assert.doesNotMatch(result.stderr, /unknown|not attached|no marked/i);
 });
 
 test('a marked symbol re-exported from several modules makes one item', t => {
@@ -436,7 +440,7 @@ test('a marked symbol re-exported from several modules makes one item', t => {
     'src/a.ts': '/**\n * Does a.\n * @realdocs:c4 shop\n */\nexport function a(): void {}\n',
     'src/index.ts': "export { a } from './a.js';\n",
   });
-  const { result, model } = dumpModel(project, '--entry', 'src/index.ts', '--entry', 'src/a.ts', ...shopArgs);
+  const { result, model } = readModel(project, '--entry', 'src/index.ts', '--entry', 'src/a.ts', ...shopArgs);
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(model.items.map(i => [i.kind, i.path, i.title]), [['symbol', 'shop', 'a']]);
 });
@@ -469,10 +473,10 @@ test('a marker in a nested mermaid fence is reported and stripped', t => {
 
 test('a section marker can be repeated to attach one section to several elements', t => {
   const project = shopProject(t, { 'docs/notes.md': '# Notes\n\n## Shared\n<!-- @realdocs:c4 shop -->\n\n<!-- @realdocs:c4 shop.api -->\n\nShared text.\n' });
-  const { result, model } = dumpModel(project, ...shopArgs, '--page', 'docs/notes.md');
+  const { result, model } = readModel(project, ...shopArgs, '--page', 'docs/notes.md');
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(model.items.map(i => [i.kind, i.path, i.title]), [['section', 'shop', 'Shared'], ['section', 'shop.api', 'Shared']]);
-  assert.match(model.items[1].markdown, /^## Shared\n[\s\S]*Shared text\.$/);
+  assert.match(model.items[1].html, /^<h2>Shared<\/h2>\n[\s\S]*Shared text\.<\/p>\n$/);
   project.run('build', ...shopArgs, '--page', 'docs/notes.md', '--format', 'html', '--out', 'wiki');
   assert.doesNotMatch(project.read('wiki/pages/docs/notes.html'), /realdocs:c4/);
 });
@@ -500,10 +504,10 @@ test('single-line symbol and overview marks still make items and never reach the
     'src/c.ts': '/** @realdocs:file Overview c. @realdocs:c4 shop.api */\nexport function c(): void {}\n',
   });
   const args = ['--entry', 'src/a.ts', '--entry', 'src/c.ts', ...shopArgs];
-  const { result, model } = dumpModel(project, ...args);
+  const { result, model } = readModel(project, ...args);
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(model.items.map(i => [i.kind, i.path, i.title]), [['symbol', 'shop', 'a'], ['file', 'shop.api', 'src/c.ts']]);
-  assert.equal(model.items[1].markdown.trim(), 'Overview c.');
+  assert.equal(model.items[1].html.trim(), '<p>Overview c.</p>');
   for (const format of ['markdown', 'html']) {
     project.run('build', ...args, '--format', format, '--out', `wiki-${format}`);
     const ext = format === 'html' ? 'html' : 'md';
@@ -516,4 +520,41 @@ test('a multi-line marker comment inside a blockquote is reported and stripped',
   const result = project.result('check', ...shopArgs, '--page', 'docs/notes.md');
   assert.equal(result.status, 1);
   assert.match(result.stderr, /docs\/notes\.md:3:3: error: Place <!-- @realdocs:c4 … -->/);
+});
+
+test('writes c4.html with the model, assets, and a homepage link only with --c4', t => {
+  const project = marked(t);
+  project.run('build', ...markedArgs, '--format', 'html', '--out', 'plain');
+  assert.equal(existsSync(join(project.cwd, 'plain/c4.html')), false);
+  assert.doesNotMatch(project.read('plain/index.html'), /c4\.html/);
+
+  const { model } = readModel(project, ...markedArgs);
+  assert.match(project.read('wiki/index.html'), /<a href="c4\.html">Architecture<\/a>/);
+  const page = project.read('wiki/c4.html');
+  assert.match(page, /src="assets\/mermaid\.min\.js"/);
+  assert.match(page, /src="assets\/c4\.js"/);
+  assert.ok(existsSync(join(project.cwd, 'wiki/assets/c4.css')));
+  const section = model.items.find(i => i.kind === 'section');
+  assert.match(section.html, /<a href="modules\/src\/api\.ts\.html#symbol-checkout">checkout<\/a>/); // rebased from pages/docs/
+  assert.equal(section.markdown, undefined);
+});
+
+test('escapes embedded data', t => {
+  const project = marked(t);
+  project.write('docs/adr.md', '<!-- @realdocs:c4 shop.api -->\n# ADR\n\nUse `</script><script>alert(1)</script>`.\n');
+  project.run('build', ...markedArgs, '--c4', '--format', 'html', '--out', 'wiki');
+  const page = project.read('wiki/c4.html');
+  assert.equal(page.match(/<\/script>/g).length, page.match(/<script/g).length);
+});
+
+test('lists c4.html in a versioned build', t => {
+  const project = fixture(t, { '.gitignore': 'dist/\n', 'docs/a.md': '# A\n\n' + fence(context) });
+  const git = (...args) => execFileSync('git', args, { cwd: project.cwd, encoding: 'utf8', stdio: 'pipe' });
+  git('init', '-q');
+  git('add', '.');
+  git('-c', 'user.name=RealDocs Test', '-c', 'user.email=realdocs@example.invalid', '-c', 'commit.gpgsign=false', 'commit', '-qm', 'Source');
+  project.run('build', '--version', '1.0.0', '--c4', '--format', 'html', '--page', 'docs/a.md');
+  const release = JSON.parse(project.read('dist/realdocs-releases/1.0.0/release.json'));
+  assert.match(release.files['c4.html'], /^[a-f0-9]{64}$/);
+  assert.match(release.files['assets/c4.js'], /^[a-f0-9]{64}$/);
 });

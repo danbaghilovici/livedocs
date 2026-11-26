@@ -16,6 +16,8 @@
     ".agents/skills/realdocs-c4/SKILL.md",
     ".agents/skills/realdocs-bootstrap/SKILL.md",
     ".agents/realdocs-instructions.md",
+    "assets/c4.css",
+    "assets/c4.js",
     "assets/file-map.css",
     "assets/file-map.js",
     "assets/icon.svg"

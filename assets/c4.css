@@ -1,0 +1,84 @@
+:root { --wiki-raised: #22302b; --wiki-warn: #edc184; --panel: min(30rem, 100vw) }
+html, body { height: 100% }
+body { margin: 0; font: .95rem/1.55 system-ui, sans-serif; background: var(--wiki-page); color: var(--wiki-ink);
+  display: grid; grid-template-rows: auto 1fr auto; overflow: hidden }
+button { font: inherit; color: inherit; background: var(--wiki-raised); border: 1px solid var(--wiki-line);
+  border-radius: var(--wiki-radius); padding: .3rem .7rem; cursor: pointer }
+button:hover { border-color: var(--wiki-accent) }
+
+header { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; padding: .7rem 1rem;
+  border-bottom: 1px solid var(--wiki-line) }
+header h1 { font: 400 1.35rem/1.2 var(--wiki-heading); margin: 0 }
+nav.crumbs { display: flex; align-items: center; gap: .35rem; flex-wrap: wrap }
+nav.crumbs button { background: none; border: 0; padding: .1rem .25rem; color: var(--wiki-accent); text-decoration: underline; text-underline-offset: .2em }
+nav.crumbs [aria-current] { color: var(--wiki-ink); text-decoration: none; cursor: default }
+nav.crumbs .sep { color: var(--wiki-muted) }
+.level { font-size: .75rem; color: var(--wiki-muted); border: 1px solid var(--wiki-line); border-radius: 99px; padding: .05rem .55rem }
+.variants { margin-inline-start: auto; display: flex; gap: .3rem; flex-wrap: wrap }
+.variants button[aria-pressed="true"] { border-color: var(--wiki-accent); color: var(--wiki-accent) }
+
+.workspace { position: relative; overflow: hidden; display: grid; grid-template-columns: 1fr auto }
+.stage { position: relative; overflow: hidden; min-width: 0 }
+.canvas { position: absolute; inset: 0; padding: 1rem; display: grid; place-items: center;
+  transition: transform .38s cubic-bezier(.4,0,.2,1), opacity .38s ease }
+.canvas.instant { transition: none }
+.canvas svg { width: 100%; height: 100%; max-width: none !important }
+.canvas .c4-shape { cursor: pointer }
+.canvas .c4-shape:focus { outline: none }
+.canvas .c4-shape:focus-visible .label-container, .canvas .c4-shape:focus-visible rect.label-container { filter: drop-shadow(0 0 4px var(--wiki-accent)) }
+.canvas .zoom-badge { pointer-events: none }
+.canvas.zoomable-hover .c4-shape.has-children { cursor: zoom-in }
+
+aside.panel { width: 0; overflow: hidden; border-inline-start: 1px solid transparent; background: var(--wiki-surface);
+  transition: width .25s ease; display: flex; flex-direction: column }
+aside.panel.open { width: var(--panel); border-color: var(--wiki-line) }
+.panel-inner { width: var(--panel); display: flex; flex-direction: column; min-height: 0; height: 100% }
+.panel-head { padding: 1rem 1rem .6rem; border-bottom: 1px solid var(--wiki-line) }
+.panel-head .row { display: flex; align-items: start; gap: .5rem }
+.panel-head h2 { font: 400 1.45rem/1.15 var(--wiki-heading); margin: 0; flex: 1 }
+.kind { font-size: .75rem; color: var(--wiki-muted) }
+.marker { margin-top: .55rem; display: flex; align-items: center; gap: .4rem; font-size: .8rem; color: var(--wiki-muted) }
+.marker code { color: var(--wiki-ink); background: var(--wiki-page); border: 1px solid var(--wiki-line); border-radius: .3rem; padding: .05rem .35rem; overflow-wrap: anywhere }
+.marker button { padding: .05rem .4rem; font-size: .75rem }
+.panel-actions { display: flex; gap: .4rem; margin-top: .7rem }
+.primary { border-color: var(--wiki-accent); color: var(--wiki-accent) }
+[role="tablist"] { display: flex; gap: .15rem; padding: 0 .6rem; border-bottom: 1px solid var(--wiki-line) }
+[role="tab"] { background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: .55rem .55rem; color: var(--wiki-muted) }
+[role="tab"][aria-selected="true"] { color: var(--wiki-ink); border-color: var(--wiki-accent) }
+[role="tab"] .count { font-size: .72rem; color: var(--wiki-muted); margin-inline-start: .2rem }
+[role="tabpanel"] { overflow: auto; padding: 1rem; flex: 1; min-height: 0 }
+.item { border: 1px solid var(--wiki-line); border-radius: var(--wiki-radius); background: var(--wiki-page); margin-bottom: .8rem; overflow: hidden }
+.item > .item-head { display: flex; gap: .5rem; align-items: baseline; padding: .55rem .75rem; border-bottom: 1px solid var(--wiki-line) }
+.item-head strong { flex: 1; font-weight: 600 }
+.item-head a, .item-head button { font-size: .8rem; white-space: nowrap }
+.item .source { font: .75rem/1.4 var(--wiki-mono); color: var(--wiki-muted); padding: .4rem .75rem 0 }
+.item .body { padding: .5rem .75rem .75rem }
+.item .body table { border-collapse: collapse; font-size: .82rem; width: 100% }
+.item .body th, .item .body td { border: 1px solid var(--wiki-line); padding: .3rem .45rem; text-align: start; vertical-align: top }
+.item .body p { margin: .3rem 0 }
+.item .diagram svg { max-width: 100%; height: auto; display: block; margin-inline: auto }
+dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: .35rem .9rem; margin: 0 0 1rem }
+dl.facts dt { color: var(--wiki-muted) }
+dl.facts dd { margin: 0 }
+h3 { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--wiki-muted); margin: 1.1rem 0 .4rem }
+ul.rels { list-style: none; padding: 0; margin: 0 }
+ul.rels li { padding: .3rem 0; border-top: 1px solid var(--wiki-line) }
+ul.rels button { background: none; border: 0; padding: 0; color: var(--wiki-accent); text-decoration: underline; text-underline-offset: .2em }
+.muted { color: var(--wiki-muted) }
+.empty { color: var(--wiki-muted); font-style: italic }
+
+footer { padding: .45rem 1rem; border-top: 1px solid var(--wiki-line); font-size: .8rem; color: var(--wiki-muted) }
+kbd { font: .75rem var(--wiki-mono); border: 1px solid var(--wiki-line); border-radius: .25rem; padding: 0 .3rem }
+
+dialog { width: min(92vw, 70rem); max-height: 90vh; background: var(--wiki-surface); color: var(--wiki-ink);
+  border: 1px solid var(--wiki-line); border-radius: var(--wiki-radius); padding: 0 }
+dialog::backdrop { background: rgb(0 0 0 / .6) }
+dialog .dlg-head { display: flex; gap: 1rem; align-items: center; padding: .6rem 1rem; border-bottom: 1px solid var(--wiki-line) }
+dialog .dlg-head strong { flex: 1 }
+dialog .dlg-body { padding: 1rem; overflow: auto; max-height: calc(90vh - 3rem) }
+dialog .dlg-body svg { max-width: 100%; height: auto; display: block; margin-inline: auto }
+
+@media (max-width: 760px) {
+  .workspace { grid-template-columns: 1fr }
+  aside.panel { position: absolute; inset: 0 0 0 auto; z-index: 2 }
+}

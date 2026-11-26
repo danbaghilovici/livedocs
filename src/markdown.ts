@@ -191,6 +191,7 @@ export function renderWiki(
   const homeBlocks = [`# ${escapeText(title)}`];
   if (extension === 'html' || navigation) {
     const links = [tagNavigation];
+    if (extension === 'html' && documentation.c4?.publish) links.push('[Architecture](c4.html)');
     if (extension === 'html' && documentation.fileGraph) links.push('[File map](#file-map-title)');
     homeBlocks.push(links.filter(Boolean).join(' · '));
     if (sectionLinks.length) homeBlocks.push('## Sections', sectionLinks.join('\n'));
