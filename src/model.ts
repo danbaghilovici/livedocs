@@ -41,6 +41,7 @@ export interface MarkdownContent {
   sourceLine?: number;
   tagLabels?: string[];
   zone?: string;
+  sourceLines?: number[]; // original line index of each line, set when compileDiagrams edits the content
   c4Marks?: C4Mark[];
   linkedFiles?: string[];
 }

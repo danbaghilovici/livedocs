@@ -380,7 +380,116 @@ ${'```'}
   const result = project.result('check', ...pages, '--page', 'docs/notes.md');
   assert.equal(result.status, 1);
   assert.match(result.stderr, /docs\/notes\.md:1:\d+: error: Unknown C4 element path shop\.checkout\. Did you mean shop\.api\.checkout\?/);
-  assert.match(result.stderr, /docs\/notes\.md:5:\d+: error: Place <!-- @realdocs:c4 … --> at the top of the page or on the first line after a heading\./);
+  assert.match(result.stderr, /docs\/notes\.md:5:1: error: Place <!-- @realdocs:c4 … --> at the top of the page or on the first line after a heading\./);
   assert.match(result.stderr, /docs\/notes\.md:8:\d+: error: Invalid @realdocs:c4 path "not a path"\. Use aliases separated by dots, such as shop\.api\./);
-  assert.match(result.stderr, /docs\/notes\.md:12:\d+: error: Place %% @realdocs:c4 … before the diagram type line\./);
+  assert.match(result.stderr, /docs\/notes\.md:12:1: error: Place %% @realdocs:c4 … before the diagram type line\./);
+});
+
+const shopPage = `# Architecture\n\n${fence(context)}\n${fence(serving)}`;
+const shopProject = (t, files = {}) => fixture(t, { 'docs/arch.md': shopPage, ...files });
+const shopArgs = ['--page', 'docs/arch.md'];
+
+test('section and diagram markers work inside a @realdocs:file overview', t => {
+  const project = shopProject(t, {
+    'src/b.ts': `/**
+ * @realdocs:file Overview first.
+ *
+ * ## Part
+ * <!-- @realdocs:c4 shop -->
+ *
+ * Part text.
+ *
+ * ${'```mermaid'}
+ * %% @realdocs:c4 shop.api
+ * flowchart LR
+ *   A --> B
+ * ${'```'}
+ * @livedocs:c4 shop
+ */
+export function b(): void {}
+`,
+  });
+  const { result, model } = dumpModel(project, '--entry', 'src/b.ts', ...shopArgs);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(model.items.map(i => [i.kind, i.path, i.title]), [
+    ['file', 'shop', 'src/b.ts'], ['section', 'shop', 'Part'], ['diagram', 'shop.api', 'Part'],
+  ]);
+  assert.equal(model.items[0].markdown.trim(), 'Overview first.');
+  assert.match(model.items[1].markdown, /Part text\./);
+  assert.match(model.items[2].mermaid, /^flowchart LR\n {2}A --> B$/);
+  project.run('build', '--entry', 'src/b.ts', ...shopArgs, '--format', 'html', '--out', 'wiki');
+  const html = project.read('wiki/modules/src/b.ts.html');
+  assert.match(html, /Part text\./);
+  assert.doesNotMatch(html, /realdocs:c4|livedocs:c4/);
+});
+
+test('a multi-line marker comment is reported and never leaks into the page', t => {
+  const project = shopProject(t, { 'docs/notes.md': '# Notes\n<!--\n@realdocs:c4 shop\n-->\n\nText.\n' });
+  const { result, model } = dumpModel(project, ...shopArgs, '--page', 'docs/notes.md');
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /docs\/notes\.md:2:1: error: Place <!-- @realdocs:c4 … --> at the top/);
+  assert.deepEqual(model.items, []);
+});
+
+test('a marked symbol re-exported from several modules makes one item', t => {
+  const project = shopProject(t, {
+    'src/a.ts': '/**\n * Does a.\n * @realdocs:c4 shop\n */\nexport function a(): void {}\n',
+    'src/index.ts': "export { a } from './a.js';\n",
+  });
+  const { result, model } = dumpModel(project, '--entry', 'src/index.ts', '--entry', 'src/a.ts', ...shopArgs);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(model.items.map(i => [i.kind, i.path, i.title]), [['symbol', 'shop', 'a']]);
+});
+
+test('C4 diagnostics point at the original line after diagram directives expand', t => {
+  const project = fixture(t, {
+    'src/a.ts': '/**\n * Does a.\n * @realdocs:docId x\n */\nexport function a(): void {}\n',
+    'docs/other.md': `# Other\n\n${fence(context.replace('"Shop"', '"Store"'))}`,
+    'docs/deps.md': `# Deps
+
+{{ diagram.dependencies("x") }}
+
+${fence(context)}
+## After
+<!-- @realdocs:c4 nope.shop -->
+`,
+  });
+  const result = project.result('check', '--c4', '--entry', 'src/a.ts', '--page', 'docs/other.md', '--page', 'docs/deps.md');
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /docs\/deps\.md:15:1: error: Unknown C4 element path nope\.shop\./);
+  assert.match(result.stderr, /docs\/deps\.md:9:1: warning: C4 element shop is labeled "Shop" here and "Store" in docs\/other\.md\./);
+});
+
+test('a marker in a nested mermaid fence is reported and stripped', t => {
+  const project = shopProject(t, { 'docs/notes.md': '# Notes\n\n> ```mermaid\n> %% @realdocs:c4 shop\n> flowchart LR\n> ```\n' });
+  const result = project.result('check', ...shopArgs, '--page', 'docs/notes.md');
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /docs\/notes\.md:4:3: error: Place %% @realdocs:c4 … before the diagram type line\./);
+});
+
+test('a section marker can be repeated to attach one section to several elements', t => {
+  const project = shopProject(t, { 'docs/notes.md': '# Notes\n\n## Shared\n<!-- @realdocs:c4 shop -->\n\n<!-- @realdocs:c4 shop.api -->\n\nShared text.\n' });
+  const { result, model } = dumpModel(project, ...shopArgs, '--page', 'docs/notes.md');
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(model.items.map(i => [i.kind, i.path, i.title]), [['section', 'shop', 'Shared'], ['section', 'shop.api', 'Shared']]);
+  assert.match(model.items[1].markdown, /^## Shared\n[\s\S]*Shared text\.$/);
+  project.run('build', ...shopArgs, '--page', 'docs/notes.md', '--format', 'html', '--out', 'wiki');
+  assert.doesNotMatch(project.read('wiki/pages/docs/notes.html'), /realdocs:c4/);
+});
+
+test('prose that mentions the marker is not a marker, and misplaced columns are exact', t => {
+  const project = shopProject(t, { 'docs/notes.md': '# Notes\n\n<p>Use @realdocs:c4 to attach content.</p>\n\nText.\n  <!-- @realdocs:c4 shop -->\n' });
+  const result = project.result('check', ...shopArgs, '--page', 'docs/notes.md');
+  assert.equal(result.status, 1);
+  assert.doesNotMatch(result.stderr, /docs\/notes\.md:3:/);
+  assert.match(result.stderr, /docs\/notes\.md:6:3: error: Place <!-- @realdocs:c4 … -->/);
+});
+
+test('a %% marker with extra words is an invalid path', t => {
+  const project = shopProject(t, {
+    'docs/notes.md': `# Notes\n\n${'```mermaid'}\n%% @realdocs:c4 shop api\nflowchart LR\n  A --> B\n${'```'}\n`,
+  });
+  const result = project.result('check', ...shopArgs, '--page', 'docs/notes.md');
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /docs\/notes\.md:4:1: error: Invalid @realdocs:c4 path "shop api"\. Use aliases separated by dots, such as shop\.api\./);
 });

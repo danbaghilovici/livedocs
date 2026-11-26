@@ -1,5 +1,5 @@
 import MarkdownIt from 'markdown-it';
-import { collectC4Items, hasC4Markers } from './c4-markers.js';
+import { collectC4Items, hasC4Markers, sourceLineOf } from './c4-markers.js';
 import { parseC4View } from './c4-views.js';
 import { wikiPath, type PageExtension } from './markdown.js';
 import type {
@@ -12,7 +12,7 @@ interface Placed {
   title: string;
   origin: string;
   href: string;
-  line: number; // source line of the first body line
+  locate: (offset: number) => number; // source line of a body line
 }
 
 interface Declaration {
@@ -40,7 +40,7 @@ function collectViews(documentation: Documentation, extension: PageExtension): P
       if (!view) continue;
       views.push({
         view, lines: token.content.split('\n'), title: view.title || heading || fallback, origin, href,
-        line: (content.sourceLine ?? 1) + token.map[0] + 1,
+        locate: offset => sourceLineOf(content, token.map![0] + 1 + offset),
       });
     }
   };
@@ -59,7 +59,7 @@ function declarations(views: Placed[]): Declaration[] {
 }
 
 const where = (declaration: Declaration): Diagnostic['location'] =>
-  ({ file: declaration.placed.origin, line: declaration.placed.line + declaration.line, column: 1 });
+  ({ file: declaration.placed.origin, line: declaration.placed.locate(declaration.line), column: 1 });
 
 // Nearest element boundary around a boundary alias in one view; grouping boundaries are transparent.
 function enclosing(view: C4View, start: string | undefined, elementBoundaries: Set<string>): string | undefined {
@@ -153,7 +153,7 @@ function warn(all: Declaration[], parents: Map<string, string>, elementBoundarie
     const first = labels.get(alias);
     if (!first) labels.set(alias, declaration);
     else if (first.label !== label) {
-      once(`${alias}\0${label}\0${placed.origin}\0${placed.line + declaration.line}`, {
+      once(`${alias}\0${label}\0${placed.origin}\0${placed.locate(declaration.line)}`, {
         level: 'warning', location: where(declaration),
         message: `C4 element ${alias} is labeled "${label}" here and "${first.label}" in ${first.placed.origin}.`,
       });

@@ -231,11 +231,18 @@ function tagLabelsFrom(tags: ReturnType<typeof realdocsTags>): string[] {
   return normalizeTagLabels(tags.filter(tag => tag.name === 'tag').map(tag => tag.value));
 }
 
+// Whether nothing but whitespace, `*` and the comment opener comes before the tag on its line.
+function startsLine(node: ts.JSDocTag): boolean {
+  const { text } = node.getSourceFile();
+  const start = node.getStart();
+  return /^\s*(?:\/\*\*)?[\s*]*$/.test(text.slice(text.lastIndexOf('\n', start - 1) + 1, start));
+}
+
 function c4MarksFrom(
   annotations: ReturnType<typeof realdocsTags>,
   at: (node: ts.JSDocTag) => { line: number; column: number },
 ): C4Mark[] | undefined {
-  const marks = annotations.filter(tag => tag.name === 'c4').map(tag => ({ path: tag.value, ...at(tag.node) }));
+  const marks = annotations.filter(tag => tag.name === 'c4' && startsLine(tag.node)).map(tag => ({ path: tag.value, ...at(tag.node) }));
   return marks.length ? marks : undefined;
 }
 
@@ -279,7 +286,14 @@ function fileOverview(file: ts.SourceFile): MarkdownContent | undefined {
     // The parsed JSDoc text trims indentation, which can change fenced Markdown content.
     const start = tag.node.getStart(header);
     const margin = comment.slice(comment.lastIndexOf('\n', start) + 1, start);
-    const body = comment.slice(tag.bodyStart, Math.min(tag.node.end, comment.length - 2)).replace(/\r\n?/g, '\n');
+    // A marker comment inside the overview text is not a tag, so the body continues past it.
+    const following = annotations.slice(annotations.indexOf(tag) + 1);
+    let bodyEnd = tag.node.end;
+    for (const next of following) {
+      if (next.name !== 'c4' || startsLine(next.node) || next.node.pos !== bodyEnd) break;
+      bodyEnd = next.node.end;
+    }
+    const body = comment.slice(tag.bodyStart, Math.min(bodyEnd, comment.length - 2)).replace(/\r\n?/g, '\n');
     const text = /^[ \t]+$/.test(margin) ? body.replaceAll(`\n${margin}`, '\n') : body.replace(/\n[ \t]*\*[ \t]?/g, '\n');
     const leadingLines = text.match(/^\s*/)?.[0].split('\n').length ?? 1;
     const c4Marks = c4MarksFrom(annotations, node => {
@@ -416,11 +430,11 @@ function describeExports({ project }: Compilation, { checker, exportsByFile }: N
       const tags = (entry.symbol.declarations ?? [entry.declaration]).flatMap(declaration => ts.getJSDocTags(declaration));
       const annotations = realdocsTags(tags).filter(({ node }) => !ts.isJSDoc(node.parent) ||
         !realdocsTags(node.parent.tags).some(item => item.name === 'file'));
-      const c4Marks = c4MarksFrom(annotations, node => {
+      const key = declarationKey(entry.declaration.getSourceFile().fileName, entry.declaration.getStart());
+      const c4Marks = lookup.get(key) !== entry.id ? undefined : c4MarksFrom(annotations, node => {
         const { line, column } = locate(node);
         return { line, column };
       });
-      const key = declarationKey(entry.declaration.getSourceFile().fileName, entry.declaration.getStart());
       const references = lookup.get(key) === entry.id ? symbolReferences(annotations, (message, node) => {
         diagnostics.push({ level: 'error', message, location: locate(node) });
       }) : {};

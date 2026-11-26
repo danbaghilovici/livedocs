@@ -1,6 +1,6 @@
 import type { C4Boundary, C4Mark, C4View } from './model.js';
 
-export const markerPattern = /^\s*%%\s*@(?:realdocs|livedocs):c4(?:\s+(\S*))?\s*$/;
+export const markerPattern = /^\s*%%\s*@(?:realdocs|livedocs):c4(?:\s+(.*?))?\s*$/;
 
 const viewTypes = new Set<string>(['C4Context', 'C4Container', 'C4Component']);
 const elementMacro = /^(Person|System|SystemDb|SystemQueue|Container|ContainerDb|ContainerQueue|Component|ComponentDb|ComponentQueue)(_Ext)?$/;

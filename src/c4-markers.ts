@@ -5,8 +5,8 @@ import type { C4Item, C4Mark, C4Model, Diagnostic, Documentation, MarkdownConten
 
 const markdown = new MarkdownIt({ html: true });
 const mention = /@(?:realdocs|livedocs):c4\b/;
-const sectionMarker = /^<!--\s*@(?:realdocs|livedocs):c4(?:\s+(.*?))?\s*-->\s*$/;
-const comment = /<!--\s*@(?:realdocs|livedocs):c4\b.*?-->/g;
+const sectionMarker = /^<!--[ \t]*@(?:realdocs|livedocs):c4(?:[ \t]+(.*?))?[ \t]*-->[ \t]*$/;
+const commentSource = String.raw`<!--\s*@(?:realdocs|livedocs):c4\b[\s\S]*?-->`;
 const docId = /^[a-zA-Z][a-zA-Z0-9._-]*$/;
 
 interface Heading { line: number; end: number; depth: number; text: string; id?: string }
@@ -22,37 +22,53 @@ interface Scan {
 const misplacedSection = 'Place <!-- @realdocs:c4 … --> at the top of the page or on the first line after a heading.';
 const misplacedDiagram = 'Place %% @realdocs:c4 … before the diagram type line.';
 
+// The 1-based source line of a line index, after compileDiagrams edits.
+export const sourceLineOf = (content: MarkdownContent, index: number): number =>
+  (content.sourceLine ?? 1) + (content.sourceLines?.[index] ?? index);
+
 function scanContent(content: MarkdownContent): Scan {
   const lines = content.markdown.split('\n');
   const scan: Scan = { lines, headings: [], sections: [], diagrams: [], misplaced: [] };
   const tokens = markdown.parse(content.markdown, {});
-  const strip = (from: number, to: number): void => {
-    for (let line = from; line < to; line++) {
-      const text = lines[line].replace(comment, '');
-      lines[line] = text.trim() ? text : '';
-    }
+  // Removes every marker comment from lines [start, end) without changing the line count, and returns where they were.
+  const strip = (start: number, end: number): { line: number; column: number }[] => {
+    const text = lines.slice(start, end).join('\n');
+    const found: { line: number; column: number }[] = [];
+    const cleaned = text.replace(new RegExp(commentSource, 'g'), (match, offset: number) => {
+      const before = text.slice(0, offset);
+      found.push({ line: start + before.split('\n').length - 1, column: offset - (before.lastIndexOf('\n') + 1) + 1 });
+      return match.replace(/[^\n]/g, '');
+    });
+    const result = cleaned.split('\n');
+    for (const [offset, line] of result.entries()) lines[start + offset] = line.trim() ? line : '';
+    return found;
   };
   let heading: Heading | undefined;
+  let afterHeading: Heading | undefined; // set while only section markers follow a heading
   for (const [index, token] of tokens.entries()) {
     const [start, end] = token.map ?? [0, 0];
+    const run = afterHeading;
+    afterHeading = undefined;
     if (token.type === 'heading_open' && token.level === 0 && token.map) {
       heading = {
         line: start, end, depth: Number(token.tag.slice(1)), text: tokens[index + 1].content,
         id: content.headings?.find(item => item.line === start)?.id,
       };
       scan.headings.push(heading);
-    } else if (token.type === 'html_block' && token.map && mention.test(token.content)) {
+    } else if (token.type === 'heading_close' && token.level === 0) {
+      afterHeading = heading;
+    } else if (token.type === 'html_block' && token.map && new RegExp(commentSource).test(token.content)) {
       const marker = sectionMarker.exec(token.content.trim());
-      const column = lines[start].indexOf('<!--') + 1;
-      if (marker && heading && token.level === 0 && tokens[index - 1]?.type === 'heading_close' && tokens[index - 1].level === 0) {
-        scan.sections.push({ path: marker[1] ?? '', line: start, column, heading });
-      } else scan.misplaced.push({ line: start, column, message: misplacedSection });
-      strip(start, end);
+      if (marker && run && token.level === 0) {
+        scan.sections.push({ path: marker[1] ?? '', line: start, column: lines[start].indexOf('<!--') + 1, heading: run });
+        afterHeading = run;
+        strip(start, end);
+      } else {
+        for (const { line, column } of strip(start, end)) scan.misplaced.push({ line, column, message: misplacedSection });
+      }
     } else if (token.type === 'inline' && token.map && token.children?.some(child => child.type === 'html_inline' && mention.test(child.content))) {
-      const line = lines.findIndex((text, at) => at >= start && at < end && mention.test(text));
-      scan.misplaced.push({ line, column: lines[line].search(comment) + 1, message: misplacedSection });
-      strip(start, end);
-    } else if (token.type === 'fence' && token.level === 0 && token.map && /^mermaid(?:\s|$)/.test(token.info.trim())) {
+      for (const { line, column } of strip(start, end)) scan.misplaced.push({ line, column, message: misplacedSection });
+    } else if (token.type === 'fence' && token.map && /^mermaid(?:\s|$)/.test(token.info.trim())) {
       const body = token.content.split('\n');
       let typeLine = body.findIndex(text => text.trim() && !text.trim().startsWith('%%'));
       if (typeLine < 0) typeLine = body.length;
@@ -62,8 +78,9 @@ function scanContent(content: MarkdownContent): Scan {
         if (!marker) continue;
         const line = start + 1 + offset;
         const column = lines[line].indexOf('%%') + 1;
-        lines[line] = '';
-        if (offset < typeLine) marks.push({ path: marker[1] ?? '', line, column, heading });
+        // A nested fence keeps its quote or list prefix.
+        lines[line] = token.level === 0 ? '' : lines[line].slice(0, column - 1);
+        if (token.level === 0 && offset < typeLine) marks.push({ path: marker[1] ?? '', line, column, heading });
         else scan.misplaced.push({ line, column, message: misplacedDiagram });
       }
       const kept = body.filter(text => !markerPattern.test(text));
@@ -117,9 +134,8 @@ export function collectC4Items(
   const process = <T extends MarkdownContent>(content: T, { file, href, fallback }: Source, lead: (scan: Scan) => void): T => {
     if (!content.c4Marks?.length && !mention.test(content.markdown)) return content;
     const scan = scanContent(content);
-    const base = content.sourceLine ?? 1;
     for (const { line, column, message } of scan.misplaced) {
-      diagnostics.push({ level: 'error', message, location: { file, line: base + line, column } });
+      diagnostics.push({ level: 'error', message, location: { file, line: sourceLineOf(content, line), column } });
     }
     lead(scan);
     const marks = [
@@ -127,7 +143,7 @@ export function collectC4Items(
       ...scan.diagrams.map(mark => ({ ...mark, diagram: mark })),
     ].sort((a, b) => a.line - b.line);
     for (const { path, line, column, heading, diagram } of marks) {
-      if (!accept({ path, line: base + line, column }, file)) continue;
+      if (!accept({ path, line: sourceLineOf(content, line), column }, file)) continue;
       const target = heading?.id ? `${href}#${heading.id}` : href;
       if (diagram) {
         items.push({ path, tab: 'diagrams', kind: 'diagram', title: diagram.title || fallback, source: file, href: target, mermaid: diagram.mermaid, origin: href });
