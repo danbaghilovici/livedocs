@@ -1,6 +1,6 @@
 import MarkdownIt from 'markdown-it';
 import { markerPattern } from './c4-views.js';
-import { symbolAnchor, wikiLink, wikiPath, type PageExtension } from './markdown.js';
+import { pageFile, symbolAnchor, wikiLink, type PageExtension } from './markdown.js';
 import type { C4Item, C4Mark, C4Model, Diagnostic, Documentation, MarkdownContent } from './model.js';
 
 const markdown = new MarkdownIt({ html: true });
@@ -159,7 +159,7 @@ export function collectC4Items(
   };
 
   const pages = documentation.pages?.map(page => {
-    const href = wikiPath(page.name, 'pages', extension);
+    const href = pageFile(documentation, page.name, 'pages', extension);
     return process(page, { file: page.name, href, fallback: page.title }, scan => {
       for (const mark of page.c4Marks ?? []) {
         if (!accept(mark, page.name)) continue;
@@ -177,7 +177,7 @@ export function collectC4Items(
   });
 
   const modules = documentation.modules.map(module => {
-    const href = wikiPath(module.name, 'modules', extension);
+    const href = pageFile(documentation, module.name, 'modules', extension);
     const overview = module.overview && process(module.overview, { file: module.name, href, fallback: module.name }, scan => {
       for (const mark of module.overview!.c4Marks ?? []) {
         if (!accept(mark, module.name)) continue;

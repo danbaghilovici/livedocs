@@ -1,7 +1,7 @@
 import MarkdownIt from 'markdown-it';
 import { collectC4Items, hasC4Markers, sourceLineOf } from './c4-markers.js';
 import { parseC4View } from './c4-views.js';
-import { wikiLink, wikiPath, type PageExtension } from './markdown.js';
+import { pageFile, wikiLink, type PageExtension } from './markdown.js';
 import type {
   C4Level, C4Model, C4ModelElement, C4PlacedView, C4View, Diagnostic, Documentation, MarkdownContent,
 } from './model.js';
@@ -44,9 +44,9 @@ function collectViews(documentation: Documentation, extension: PageExtension): P
       });
     }
   };
-  for (const page of documentation.pages ?? []) scan(page, page.name, wikiPath(page.name, 'pages', extension), page.title);
+  for (const page of documentation.pages ?? []) scan(page, page.name, pageFile(documentation, page.name, 'pages', extension), page.title);
   for (const module of documentation.modules) {
-    if (module.overview) scan(module.overview, module.name, wikiPath(module.name, 'modules', extension), module.name);
+    if (module.overview) scan(module.overview, module.name, pageFile(documentation, module.name, 'modules', extension), module.name);
   }
   return views;
 }

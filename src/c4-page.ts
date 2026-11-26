@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { posix } from 'node:path';
 import { encodeHrefComponent } from './markdown.js';
 import { mermaidSetup, style } from './html.js';
+import { bootstrapStyle, themeLoader } from './shell.js';
 import type { C4Item, C4Model, Documentation } from './model.js';
 
 const escape = (text: string): string => text.replace(/[&<>"]/g, char => `&#${char.charCodeAt(0)};`);
@@ -35,11 +36,13 @@ export function renderC4Page(documentation: Documentation, renderMarkdown: (mark
   client ??= readFileSync(new URL('../assets/c4.js', import.meta.url), 'utf8');
   stylesheet ??= readFileSync(new URL('../assets/c4.css', import.meta.url), 'utf8');
   const page = `<!doctype html>
-<html lang="en">
+<html lang="en" data-bs-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escape(title)} architecture</title>
+  <script>${themeLoader}</script>
+  <link rel="stylesheet" href="${bootstrapStyle}">
   <style>${style}</style>
   <link rel="stylesheet" href="assets/c4.css">
   <script defer src="assets/mermaid.min.js"></script>

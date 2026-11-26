@@ -205,7 +205,7 @@
     const visible = tabs.filter(([key]) => key === 'overview' || counts[key]);
     panel.querySelector('.panel-inner').innerHTML = `
       <div class="panel-head">
-        <div class="row"><h2>${esc(element.label)}</h2><button type="button" data-action="close" aria-label="Close panel">✕</button></div>
+        <div class="panel-title"><h2>${esc(element.label)}</h2><button type="button" data-action="close" aria-label="Close panel">✕</button></div>
         <div class="kind">${esc(kindName(element.kind))}${element.technology ? ' · ' + esc(element.technology) : ''}</div>
         <div class="marker">Marker <code>@realdocs:c4 ${esc(element.path)}</code><button type="button" data-action="copy">Copy</button></div>
         ${own ? `<div class="panel-actions"><button type="button" class="primary" data-action="zoom">${down ? 'Zoom in to' : 'Go to'} ${esc(element.label)} ${esc(levelWord)} ${down ? '⊕' : '↗'}</button></div>` : ''}

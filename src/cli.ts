@@ -9,6 +9,7 @@ import { compileC4 } from './c4.js';
 import { compileDiagrams } from './diagrams.js';
 import { renderMarkdownGraph } from './graph.js';
 import { renderWiki, type PageExtension } from './markdown.js';
+import { placeDocumentation } from './navigation.js';
 import type { Diagnostic, Documentation } from './model.js';
 import { releaseManifestName, writeWiki } from './output.js';
 import { createProgram, projectFromArguments, watchProject, type Project } from './project.js';
@@ -69,7 +70,7 @@ interface RunOptions {
 }
 
 function prepareDocumentation(extractedCode: Documentation, project: Project, options: RunOptions): Documentation {
-  const inputs = options.includePages?.(extractedCode, project, options.extension) ?? extractedCode;
+  const inputs = options.includePages?.(extractedCode, project, options.extension) ?? placeDocumentation(extractedCode, options.extension);
   return compileC4(compileDiagrams(inputs, options.extension), options.extension, options.c4);
 }
 
@@ -224,8 +225,8 @@ async function main(): Promise<void> {
   const compilations = projects.map(project => ({ project, program: createProgram(project) }));
   code = extractDocumentations(compilations, options.graph);
   if (site) {
-    const { title, pages, sections } = site;
-    code.navigation = { title, pages, sections };
+    const { title, pages, sections, home, categories, groups, rules, sourceUrl } = site;
+    code.navigation = { title, pages, sections, home, categories, groups, rules, sourceUrl };
   }
   const compilerConfigs = impact || release ? compilations.flatMap(({ project, program }) => {
     const compilerConfig = program.getCompilerOptions().configFile as ts.TsConfigSourceFile | undefined;

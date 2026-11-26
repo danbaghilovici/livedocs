@@ -1,7 +1,7 @@
 import { readFileSync, realpathSync } from 'node:fs';
-import { basename, dirname, isAbsolute, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, posix, resolve } from 'node:path';
 import { defaultCompilerConfig, projectPath, type Project } from './project.js';
-import type { DocumentationSection } from './model.js';
+import type { DocumentationSection, PlacementRule } from './model.js';
 
 export const configName = 'realdocs.json';
 export const sourceFile = /\.(?:[jt]sx?|[cm][jt]s)$/i;
@@ -14,11 +14,17 @@ interface SectionConfig {
   project?: string;
   entries?: string[];
   pages?: string[];
+  category?: string;
+  group?: string;
 }
 
 export interface Config {
   sourceUrl?: string;
   pages?: string[];
+  home?: string;
+  categories?: string[];
+  groups?: Record<string, string>;
+  rules?: { files: string; category: string; group?: string }[];
   sections?: Record<string, SectionConfig>;
 }
 
@@ -29,9 +35,58 @@ export interface Site {
   title: string;
   pages: string[];
   sections: DocumentationSection[];
+  home?: string;
+  categories: string[];
+  groups: Record<string, string>;
+  rules: PlacementRule[];
+  sourceUrl?: string;
 }
 
-type ConfigNavigation = Pick<Site, 'pages' | 'sections'>;
+type ConfigNavigation = Pick<Site, 'pages' | 'sections' | 'home' | 'categories' | 'groups' | 'rules'>;
+
+function singleLine(value: unknown): value is string {
+  return typeof value === 'string' && !!value.trim() && !/[\r\n]/.test(value);
+}
+
+function textValue(value: unknown, field: string): string | undefined {
+  if (value === undefined) return undefined;
+  if (!singleLine(value)) throw new Error(`${field} must be a nonempty single-line string.`);
+  return value.trim();
+}
+
+function labels(value: unknown, field: string): string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || !value.every(singleLine)) throw new Error(`${field} must be an array of nonempty single-line strings.`);
+  return value.map(item => item.trim());
+}
+
+function labelMap(value: unknown, field: string): Record<string, string> {
+  if (value === undefined) return {};
+  const map = record(value);
+  if (!map) throw new Error(`${field} must be an object.`);
+  return Object.fromEntries(Object.entries(map).map(([key, item]) => [key, textValue(item, `${field}.${key}`)!]));
+}
+
+/** Folder defaults, with each glob rebased from the config directory onto the site root. */
+function placementRules(value: unknown, field: string, base: string): PlacementRule[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw new Error(`${field} must be an array of rules.`);
+  return value.map((item, index) => {
+    const rule = record(item);
+    const name = `${field}[${index}]`;
+    if (!rule) throw new Error(`${name} must be an object.`);
+    const files = textValue(rule.files, `${name}.files`);
+    if (!files) throw new Error(`${name}.files must be a nonempty single-line string.`);
+    const relative = posix.normalize(files);
+    if (posix.isAbsolute(relative) || isAbsolute(files) || relative === '..' || relative.startsWith('../')) {
+      throw new Error(`${name}.files must be inside the config directory (${files}).`);
+    }
+    const category = textValue(rule.category, `${name}.category`);
+    if (!category) throw new Error(`${name}.category must be a nonempty single-line string.`);
+    const group = textValue(rule.group, `${name}.group`);
+    return { pattern: posix.join(base, relative), category, ...(group && { group }) };
+  });
+}
 
 export function record(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
@@ -112,10 +167,16 @@ export function readSite(path: string, extraPages: string[]): Site {
     if (configPath === path) siteSourceUrl = configSourceUrl;
 
     const defaultConfig = defaultCompilerConfig(configDirectory);
+    const home = input.home === undefined ? undefined : inputPath(configDirectory, input.home, `${label}: home`, markdownFile);
     const pages = [...new Set([
+      ...(home ? [home] : []),
       ...list(configDirectory, input.pages, `${label}: pages`, markdownFile),
       ...list(configDirectory, addedPages, `${label}: --page`, markdownFile),
     ])].map(sitePath);
+    const categories = labels(input.categories, `${label}: categories`);
+    const groups = labelMap(input.groups, `${label}: groups`);
+    const rules = placementRules(input.rules, `${label}: rules`, sitePath(configDirectory));
+    const includedRules: PlacementRule[] = [];
     const sections: DocumentationSection[] = [];
     const declared = input.sections === undefined ? {} : record(input.sections);
     if (!declared) throw new Error(`${label}: sections must be an object.`);
@@ -130,17 +191,23 @@ export function readSite(path: string, extraPages: string[]): Site {
         throw new Error(`${field}.title must be a nonempty single-line string.`);
       }
       const sectionTitle = title?.trim() ?? id;
+      const category = textValue(section.category, `${field}.category`);
+      const group = textValue(section.group, `${field}.group`);
+      const placement = { ...(category && { category }), ...(group && { group }) };
       if (section.config !== undefined) {
         if (section.entries !== undefined || section.pages !== undefined || section.project !== undefined) {
           throw new Error(`${field}.config cannot be combined with entries, pages, or project.`);
         }
         const included = readConfig(inputPath(configDirectory, section.config, `${field}.config`, jsonFile));
+        // Only the including section places these files; the app's own categories apply to its own wiki.
         sections.push({
           id,
           title: sectionTitle,
           entries: [...new Set(included.sections.flatMap(section => section.entries))],
           pages: [...new Set([...included.pages, ...included.sections.flatMap(section => section.pages)])],
+          ...placement,
         });
+        includedRules.push(...included.rules);
         continue;
       }
       const entries = list(configDirectory, section.entries, `${field}.entries`, sourceFile);
@@ -154,18 +221,21 @@ export function readSite(path: string, extraPages: string[]): Site {
         for (const entry of entries) project.entries.add(entry);
         compilerProjects.set(key, project);
       }
-      sections.push({ id, title: sectionTitle, entries: entries.map(sitePath), pages: sectionPages.map(sitePath) });
+      sections.push({ id, title: sectionTitle, entries: entries.map(sitePath), pages: sectionPages.map(sitePath), ...placement });
     }
     if (!pages.length && !sections.some(section => section.entries.length || section.pages.length)) {
       throw new Error(`${label} needs at least one entry or Markdown page.`);
     }
     activeConfigs.delete(realPath);
-    const navigation = { pages, sections };
+    const navigation: ConfigNavigation = {
+      pages, sections, categories, groups, rules: [...rules, ...includedRules],
+      ...(home && { home: sitePath(home) }),
+    };
     loadedConfigs.set(configPath, navigation);
     return navigation;
   }
 
-  const { pages, sections } = readConfig(path, extraPages);
+  const { pages, sections, home, categories, groups, rules } = readConfig(path, extraPages);
   const projects = [...compilerProjects.values()].map(project => ({
     ...project, directory, entries: [...project.entries].sort(), pages: [],
   }));
@@ -176,6 +246,7 @@ export function readSite(path: string, extraPages: string[]): Site {
     pages: [...new Set([...pages, ...sections.flatMap(section => section.pages)])].map(page => resolve(directory, page)),
     ...(siteSourceUrl && { sourceUrl: siteSourceUrl }),
   };
-  return { project, projects, configPaths: [...configPaths], pages, sections,
+  return { project, projects, configPaths: [...configPaths], pages, sections, home, categories, groups, rules,
+    ...(siteSourceUrl && { sourceUrl: siteSourceUrl }),
     title: typeof name === 'string' && name.trim() ? name.trim() : basename(directory) || 'Project documentation' };
 }

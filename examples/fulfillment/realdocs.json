@@ -1,8 +1,26 @@
 {
-  "pages": ["README.md", "docs/architecture.md", "docs/quickstart.md"],
+  "pages": [
+    "README.md",
+    "docs/architecture.md",
+    "docs/quickstart.md"
+  ],
+  "categories": [
+    "Guides",
+    "Decisions",
+    "API",
+    "Components"
+  ],
+  "rules": [
+    {
+      "files": "docs/*.md",
+      "category": "Guides"
+    }
+  ],
   "sections": {
     "api": {
       "title": "Fulfillment API",
+      "category": "API",
+      "group": "fulfillment",
       "project": "tsconfig.json",
       "entries": [
         "src/index.ts",
@@ -15,22 +33,28 @@
     },
     "catalog": {
       "title": "Catalog",
+      "category": "Components",
       "config": "src/catalog/realdocs.json"
     },
     "delivery": {
       "title": "Delivery",
+      "category": "Components",
       "config": "src/delivery/realdocs.json"
     },
     "integrations": {
       "title": "Integrations",
+      "category": "Components",
       "config": "src/integrations/realdocs.json"
     },
     "operations": {
       "title": "Warehouse operations",
+      "category": "Components",
       "config": "src/operations/realdocs.json"
     },
     "guides": {
       "title": "Checkout and operations guides",
+      "category": "Guides",
+      "group": "checkout",
       "pages": [
         "docs/delivery.md",
         "docs/warehouse.md",

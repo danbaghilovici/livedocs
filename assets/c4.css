@@ -9,6 +9,7 @@ button:hover { border-color: var(--wiki-accent) }
 header { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; padding: .7rem 1rem;
   border-bottom: 1px solid var(--wiki-line) }
 header h1 { font: 400 1.35rem/1.2 var(--wiki-heading); margin: 0 }
+header h1 a { color: inherit; text-decoration: none }
 nav.crumbs { display: flex; align-items: center; gap: .35rem; flex-wrap: wrap }
 nav.crumbs button { background: none; border: 0; padding: .1rem .25rem; color: var(--wiki-accent); text-decoration: underline; text-underline-offset: .2em }
 nav.crumbs [aria-current] { color: var(--wiki-ink); text-decoration: none; cursor: default }
@@ -34,7 +35,7 @@ aside.panel { width: 0; overflow: hidden; border-inline-start: 1px solid transpa
 aside.panel.open { width: var(--panel); border-color: var(--wiki-line) }
 .panel-inner { width: var(--panel); display: flex; flex-direction: column; min-height: 0; height: 100% }
 .panel-head { padding: 1rem 1rem .6rem; border-bottom: 1px solid var(--wiki-line) }
-.panel-head .row { display: flex; align-items: start; gap: .5rem }
+.panel-head .panel-title { display: flex; align-items: start; gap: .5rem }
 .panel-head h2 { font: 400 1.45rem/1.15 var(--wiki-heading); margin: 0; flex: 1 }
 .kind { font-size: .75rem; color: var(--wiki-muted) }
 .marker { margin-top: .55rem; display: flex; align-items: center; gap: .4rem; font-size: .8rem; color: var(--wiki-muted) }

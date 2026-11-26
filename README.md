@@ -29,7 +29,7 @@ The [fulfillment example](https://github.com/danbaghilovici/realdocs/tree/main/e
 
 ## Project configuration
 
-Use `realdocs.json` to give a project a shared documentation homepage and group code and Markdown guides into sections. Each section can use its own TypeScript configuration.
+Use `realdocs.json` to give a project a shared documentation homepage, group code and Markdown guides into sections, and place pages in a navigation hierarchy. Each section can use its own TypeScript configuration. [Categories and paths](#categories-and-paths)
 
 ### Generate a starter config
 
@@ -77,13 +77,19 @@ Paths are relative to the directory containing `realdocs.json`.
 | Field | Purpose |
 | --- | --- |
 | `sourceUrl` | Optional URL of the config directory in a source browser, such as `https://github.com/<owner>/<repo>/blob/<branch>`. Links to existing project files outside the wiki point there instead of being reported. [Links](#links) |
-| Top-level `pages` | Markdown guides linked from the wiki homepage. |
+| `home` | Optional Markdown page rendered as the homepage. Defaults to the root `README.md` when it is an input. The page is added to the inputs. |
+| Top-level `pages` | Markdown guides included in the wiki. |
+| `categories` | Optional sidebar order of categories, by label. Unlisted categories follow alphabetically. [Categories and paths](#categories-and-paths) |
+| `groups` | Optional label overrides for groups, keyed by URL path, such as `{"architecture-decisions/storage": "Storage layer"}`. |
+| `rules` | Optional ordered folder defaults, such as `{"files": "docs/adr/*.md", "category": "Architecture Decisions"}`. The first matching rule places a file. `group` adds a sub-group. |
 | `sections` | Named groups of source files and guides. Each key identifies a section in the wiki. Use lowercase letters, digits, hyphens, and underscores, starting with a letter or digit. |
 | `sections.<id>.title` | Optional display name. The section ID is the default. |
 | `sections.<id>.config` | Optional path to another RealDocs config. Includes that project's inputs in the section. |
 | `sections.<id>.project` | Optional path to a compiler config for this section. It supplies compiler settings and path aliases. If omitted, RealDocs uses the root `tsconfig.json` or `jsconfig.json` when available. |
 | `sections.<id>.entries` | JavaScript or TypeScript files selected for documentation. |
 | `sections.<id>.pages` | Markdown guides linked from the section's landing page. |
+| `sections.<id>.category` | Optional category for every entry and guide in the section. |
+| `sections.<id>.group` | Optional sub-group path under the category. Defaults to the section ID. |
 
 ### Repo-wide and standalone app wikis
 
@@ -114,13 +120,13 @@ The combined examples config references the standalone fulfillment config. The f
 
 ### Homepage and Mermaid C4 diagrams
 
-RealDocs generates the homepage from the project name, section links, and guide links. The project name comes from `package.json` or the directory name. `--graph` adds a file map to the homepage and each section landing page. A section map covers its selected files and their source dependencies. Every selected Markdown guide has its own page, including any root README or architecture guide. Shared source pages have one URL so multiple sections can link to them.
+The homepage renders the root `README.md`, or the page named by `home`. Without one, RealDocs generates a homepage from the project name and the navigation tree. The project name comes from `package.json` or the directory name. `--graph` adds a site-wide file map page and a map on each section landing page. A section map covers its selected files and their source dependencies. Every other selected Markdown guide has its own page. Shared source pages have one URL so multiple sections can link to them.
 
 Put Mermaid `C4Context` and `C4Container` diagrams in a guide linked from the homepage. Put focused `C4Component` diagrams in a section guide or a source file overview. The diagrams describe the runtime architecture. The file map shows code relationships derived from the source. [Code-linked diagrams](#code-linked-diagrams) · [Mermaid C4 syntax](https://mermaid.js.org/syntax/c4.html)
 
 ### Interactive C4 page
 
-Add `--c4` to an HTML `build` or `watch` to write `c4.html` beside the wiki home and link it as **Architecture**. The page presents your `C4Context`, `C4Container`, and `C4Component` diagrams as one model. Double-click an element with a **+** badge to zoom into its level, or a **↗** badge to jump to a peer's level. Select any element to open a panel with Overview, Diagrams, Docs, and Code tabs. `--c4` fails with Markdown output and when no C4 diagram is found. Run `npx realdocs check --strict --c4` in CI to validate the model without building. It also reports when no C4 diagram is found.
+Add `--c4` to an HTML `build` or `watch` to write `c4.html` beside the wiki home and link it as **Architecture** in the navigation bar. The page presents your `C4Context`, `C4Container`, and `C4Component` diagrams as one model. Double-click an element with a **+** badge to zoom into its level, or a **↗** badge to jump to a peer's level. Select any element to open a panel with Overview, Diagrams, Docs, and Code tabs. `--c4` fails with Markdown output and when no C4 diagram is found. Run `npx realdocs check --strict --c4` in CI to validate the model without building. It also reports when no C4 diagram is found.
 
 Give each element a descriptive camelCase alias and reuse it in every view, because the same alias is the same element everywhere. A `System_Boundary(alias)` or `Container_Boundary(alias)` whose alias matches an element is that element's zoom level, so `Container_Boundary(runtime, …)` in a component view holds the components of the `runtime` container. A boundary that matches no element only groups. An element's path joins its parents' aliases, such as `fulfillment.runtime.coordinator`.
 
@@ -168,7 +174,7 @@ Run the installer again after upgrading RealDocs to add any missing skills. If a
 
 ## Standalone Markdown pages
 
-Repeat `--page` to include Markdown files on the wiki home. Use `--page` on its own for a wiki made entirely from Markdown.
+Repeat `--page` to include Markdown files in the wiki. A root `README.md` becomes the homepage. Use `--page` on its own for a wiki made entirely from Markdown.
 
 ```sh
 npx realdocs build --entry src/index.ts --page README.md --page docs/architecture.md
@@ -193,6 +199,45 @@ Fragments resolve the way GitHub resolves them, so a link that works on GitHub w
 - A fragment with no matching heading, anchor, or export.
 
 `check --strict` fails on any of them.
+
+## Categories and paths
+
+Place each guide and entry file in a navigation hierarchy that does not have to follow your folders. The hierarchy sets the sidebar, the breadcrumbs, and the page URL.
+
+A **category** is a top-level sidebar group, such as Architecture Decisions. An optional **path** places the page inside it. Every segment except the last is a sub-group, at any depth. The last segment is the page name.
+
+```md
+<!-- @realdocs:category Architecture Decisions -->
+<!-- @realdocs:path storage/category-c/0021-jsonb-store -->
+# ADR 0021: Storage Category C
+```
+
+In a JS or TS entry file, put the same tags in the leading `@realdocs:file` comment.
+
+```ts
+/**
+ * @realdocs:file Boots the control-plane HTTP server.
+ * @realdocs:category Applications
+ * @realdocs:path control-plane/bootstrap
+ */
+```
+
+Most files need no tags. RealDocs places a file using the first of these that applies:
+
+1. Its own `category` and `path`. An in-file `path` starts at the category root.
+2. The first section that lists the file and has a `category`. The file goes in the section's `group`, which defaults to the section ID.
+3. The first `rules` entry whose `files` glob matches. Folders matched after the first wildcard become sub-groups, so `docs/hld/**/*.md` puts `docs/hld/data-service/README.md` in a `data-service` group.
+
+| Source | Placement | Output |
+| --- | --- | --- |
+| `docs/adr/0021-store.md` | `category: Architecture Decisions`, `path: storage/0021-jsonb` | `architecture-decisions/storage/0021-jsonb.html` |
+| `docs/adr/0025-workspaces.md` | rule `docs/adr/*.md` → Architecture Decisions | `architecture-decisions/0025-workspaces.html` |
+| `apps/control-plane/src/main.ts` | section `control-plane` → Applications | `applications/control-plane/main.ts.html` |
+| `docs/notes.md` | none | `pages/docs/notes.html` |
+
+URLs use lowercase slugs of the labels: `Architecture Decisions` becomes `architecture-decisions`. A `README.md` or `index.md`, or a page whose path ends in `index`, becomes its group's landing page. Every group has a landing page that lists its sub-groups and pages, so each breadcrumb links somewhere. Unplaced pages keep their source-mirroring URLs and appear under **Other pages**. Sections without a category appear under **Code reference**.
+
+Links between source files keep working when pages move, because RealDocs rewrites them to the new URLs. `check` reports two inputs that resolve to the same URL, categories that use a reserved name (`assets`, `pages`, `modules`, `sections`, `tags`, `index`, or `file-map`), and unused `groups` or `categories` entries. In a repo-wide wiki, an included app config contributes only its `rules`. Its section categories, `categories`, `groups`, and `home` apply to its own wiki.
 
 ## Tags
 
@@ -224,7 +269,7 @@ RealDocs resolves the label from the current export name and puts the documentat
 
 ## HTML output
 
-Pass `--format html` to `build` or `watch` to generate linked HTML pages. Open `index.html` in a browser. Pages with Mermaid diagrams use a local renderer packaged in the output directory.
+Pass `--format html` to `build` or `watch` to generate linked HTML pages. Open `index.html` in a browser. Every page has a header, a sidebar with the navigation tree, breadcrumbs, and a footer, styled with a bundled copy of Bootstrap. Pages open in Bootstrap's dark theme; the ☀ button in the header switches to light and the browser remembers the choice. On narrow screens the ☰ button opens the sidebar. Pages with Mermaid diagrams use a local renderer packaged in the output directory. The output works offline.
 
 ```sh
 npx realdocs build --entry src/index.ts --format html --out dist/realdocs-html
@@ -234,11 +279,11 @@ Use separate output directories to keep both formats. The default format is Mark
 
 ## File map
 
-Add `--graph` to `build` or `watch` to embed a **File map** section on the wiki home. HTML provides an offline, interactive graph with search, zone and relationship filters, and incoming and outgoing links for the selected file. Markdown provides a Mermaid graph and a file list grouped by zone.
+Add `--graph` to `build` or `watch` to add a **File map** page, `file-map.html` or `file-map.md`, linked from the homepage. HTML provides an offline, interactive graph with search, zone and relationship filters, and incoming and outgoing links for the selected file. Markdown provides a Mermaid graph and a file list grouped by zone.
 
 The map follows the compiler's local files from the configured entry points and includes Markdown files selected with `--page`. It shows explicit imports, type-only imports and re-exports, ordinary re-exports, resolved documentation links, and `@realdocs:docUses` relationships. A file links to its wiki page when it was supplied as an entry or page.
 
-Files appear in their containing folder's zone by default. Add `@realdocs:zone Order operations` to the `@realdocs:file` comment, or `<!-- @realdocs:zone Guides -->` at the top of a Markdown page, to group files from different folders.
+Files appear in their category's zone, or else their containing folder's zone. Add `@realdocs:zone Order operations` to the `@realdocs:file` comment, or `<!-- @realdocs:zone Guides -->` at the top of a Markdown page, to group files from different folders.
 
 ```sh
 (cd examples/fulfillment && node ../../dist/cli.js build --strict --graph --format html --out dist/wiki-html)

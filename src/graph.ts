@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, posix } from 'node:path';
-import { codeSpan, href, wikiPath, type PageExtension } from './markdown.js';
+import { codeSpan, href, pageFile, type PageExtension } from './markdown.js';
 import type { Documentation, DocumentationSection, FileRelation } from './model.js';
 
 const relations: Record<FileRelation, string> = {
@@ -30,9 +30,9 @@ function graphData(documentation: Documentation, extension: PageExtension, file:
   ].filter(node => !scope || scope.has(node.path)).sort((a, b) => compare(a.path, b.path)).map(node => ({
     path: node.path,
     label: posix.basename(node.path),
-    zone: node.zone ?? (posix.dirname(node.path) === '.' ? 'Project root' : posix.dirname(node.path)),
+    zone: node.zone ?? documentation.site?.routes[node.path]?.category ?? (posix.dirname(node.path) === '.' ? 'Project root' : posix.dirname(node.path)),
     kind: node.kind,
-    href: node.documented ? href(file, wikiPath(node.path, node.kind === 'code' ? 'modules' : 'pages', extension)) : undefined,
+    href: node.documented ? href(file, pageFile(documentation, node.path, node.kind === 'code' ? 'modules' : 'pages', extension)) : undefined,
   }));
   const paths = new Set(nodes.map(node => node.path));
   const edges = new Map<string, typeof graph.edges[number]>();

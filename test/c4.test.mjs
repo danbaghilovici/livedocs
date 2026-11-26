@@ -532,7 +532,7 @@ test('writes c4.html with the model, assets, and a homepage link only with --c4'
   assert.doesNotMatch(project.read('plain/index.html'), /c4\.html/);
 
   const { model } = readModel(project, ...markedArgs);
-  assert.match(project.read('wiki/index.html'), /<a href="c4\.html">Architecture<\/a>/);
+  assert.match(project.read('wiki/index.html'), /<a class="nav-link" href="c4\.html">Architecture<\/a>/);
   const page = project.read('wiki/c4.html');
   assert.match(page, /src="assets\/mermaid\.min\.js"/);
   assert.match(page, /src="assets\/c4\.js"/);
@@ -564,9 +564,11 @@ for (const [folder, label] of [['C#', 'hash'], ['100% done', 'percent'], ['q" on
     const item = model.items.find(i => i.kind === 'section');
     const hrefs = [...item.html.matchAll(/ href="([^"]*)"/g)].map(m => m[1]);
     assert.doesNotMatch(item.html, /onmouseover=/);
-    // The wiki's own page, rendered in place, links to the same targets relative to itself.
+    // The wiki's own page, rendered in place, links to the same targets relative to itself. Only its
+    // authored content counts: the shell's sidebar also links to every page.
     const origin = item.origin;
-    const own = [...project.read(`wiki/${origin}`).matchAll(/ href="([^"]*)"/g)].map(m => m[1])
+    const content = project.read(`wiki/${origin}`).split('<main id="content"')[1];
+    const own = [...content.matchAll(/ href="([^"]*)"/g)].map(m => m[1])
       .filter(h => /other|top|\?x|#notes/.test(h) && !h.includes('#a/'));
     const encodedDir = origin.split('/').slice(0, -1).map(encode).join('/');
     const expected = own.map(h => h.startsWith('#') || h.startsWith('?') ? `${origin.split('/').map(encode).join('/')}${h}`

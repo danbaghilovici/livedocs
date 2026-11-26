@@ -1,7 +1,7 @@
 import { isBuiltin } from 'node:module';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import ts from 'typescript';
-import { normalizeTagLabels, type Diagnostic, type DocPart, type DocTag, type Documentation, type C4Mark, type FileGraph, type FileRelation, type MarkdownContent, type SourceLocation } from './model.js';
+import { normalizeTagLabels, placementError, type Diagnostic, type DocPart, type DocTag, type Documentation, type C4Mark, type FileGraph, type FileRelation, type MarkdownContent, type SourceLocation } from './model.js';
 import { compilerDiagnostic, projectPath, sourceLocation, type Project } from './project.js';
 
 interface Export {
@@ -301,14 +301,34 @@ function fileOverview(file: ts.SourceFile): MarkdownContent | undefined {
       const { line, character } = file.getLineAndCharacterOfPosition(range.pos + node.getStart(header));
       return { line: line + 1, column: character + 1 };
     });
+    const placement: { category?: string; path?: string } = {};
+    const annotationErrors: { message: string; line: number }[] = [];
+    for (const item of annotations) {
+      if (item.name !== 'category' && item.name !== 'path') continue;
+      const { value } = item;
+      const error = placementError(item.name, value, placement[item.name] !== undefined);
+      const line = file.getLineAndCharacterOfPosition(range.pos + item.node.getStart(header)).line + 1;
+      if (error) annotationErrors.push({ message: error, line });
+      else placement[item.name] = value.trim();
+    }
     return {
       markdown: text.trim(),
       sourceLine: file.getLineAndCharacterOfPosition(range.pos + start).line + leadingLines,
       tagLabels: tagLabelsFrom(annotations),
       zone: annotations.find(item => item.name === 'zone')?.value || undefined,
+      ...placement,
+      ...(annotationErrors.length && { annotationErrors }),
       ...c4Marks && { c4Marks },
     };
   }
+}
+
+function reportedOverview(file: ts.SourceFile, project: Project, diagnostics: Diagnostic[]): MarkdownContent | undefined {
+  const overview = fileOverview(file);
+  for (const { message, line } of overview?.annotationErrors ?? []) {
+    diagnostics.push({ level: 'error', message, location: { file: projectPath(project.directory, file.fileName), line, column: 1 } });
+  }
+  return overview;
 }
 
 function extractFileGraph(program: ts.Program, project: Project, checker: ts.TypeChecker, modules: Documentation['modules']): FileGraph {
@@ -421,7 +441,7 @@ function describeExports({ project }: Compilation, { checker, exportsByFile }: N
   return [...exportsByFile].map(([file, entries]) => ({
     name: projectPath(project.directory, file.fileName),
     language: /\.[cm]?jsx?$/i.test(file.fileName) ? 'javascript' : 'typescript',
-    overview: fileOverview(file),
+    overview: reportedOverview(file, project, diagnostics),
     symbols: entries.map(entry => {
       const locate = (node: ts.Node): SourceLocation => sourceLocation(project.directory, node.getSourceFile(), node.getStart());
       const location = locate(entry.declaration);

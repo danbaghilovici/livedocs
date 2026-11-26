@@ -44,6 +44,9 @@ export interface MarkdownContent {
   sourceLines?: number[]; // original line index of each line, set when compileDiagrams edits the content
   c4Marks?: C4Mark[];
   linkedFiles?: string[];
+  category?: string;
+  path?: string;
+  annotationErrors?: { message: string; line: number }[];
 }
 
 export interface AuthoredPage extends MarkdownContent {
@@ -63,6 +66,61 @@ export interface DocumentationSection {
   title: string;
   entries: string[];
   pages: string[];
+  category?: string;
+  group?: string;
+}
+
+/** A folder default from realdocs.json. The pattern is a normalized glob relative to the site root. */
+export interface PlacementRule {
+  pattern: string;
+  category: string;
+  group?: string;
+}
+
+export interface Navigation {
+  title: string;
+  pages: string[];
+  sections: DocumentationSection[];
+  home?: string;
+  categories: string[];
+  groups: Record<string, string>;
+  rules: PlacementRule[];
+  sourceUrl?: string;
+}
+
+/** Where an input is written, and the label of the category that placed it. */
+export interface Route {
+  file: string;
+  category?: string;
+}
+
+export interface NavPage {
+  kind: 'page';
+  label: string;
+  file: string;
+  source: string;
+  code: boolean;
+}
+
+export interface NavGroup {
+  kind: 'group';
+  label: string;
+  key: string;
+  file: string;
+  /** Source name of the authored page that is this group's index. */
+  index?: string;
+  /** Section ID when the group is a section landing page. */
+  section?: string;
+  children: NavItem[];
+}
+
+export type NavItem = NavGroup | NavPage;
+
+export interface SiteMap {
+  home: string;
+  homeSource?: string;
+  routes: Record<string, Route>;
+  tree: NavGroup[];
 }
 
 export interface Release {
@@ -80,7 +138,8 @@ export interface Documentation {
   diagnostics: Diagnostic[];
   fileGraph?: FileGraph;
   release?: Release;
-  navigation?: { title: string; pages: string[]; sections: DocumentationSection[] };
+  navigation?: Navigation;
+  site?: SiteMap;
   c4?: C4Model;
 }
 
@@ -99,6 +158,13 @@ export interface FileGraph {
 
 export function normalizeTagLabels(labels: readonly string[]): string[] {
   return [...new Set(labels.map(label => label.trim().toLowerCase().normalize('NFC').replace(/\s+/gu, '-')).filter(Boolean))];
+}
+
+/** Why a `category` or `path` annotation value is unusable, or undefined when it is fine. */
+export function placementError(name: 'category' | 'path', value: string, repeated: boolean): string | undefined {
+  if (repeated) return `A file can have only one @realdocs:${name}.`;
+  if (!value.trim()) return `@realdocs:${name} needs a value.`;
+  if (/[\r\n]/.test(value.trim())) return `@realdocs:${name} must be a single line.`;
 }
 
 export interface C4Mark { path: string; line: number; column: number }

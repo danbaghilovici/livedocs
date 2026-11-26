@@ -2,8 +2,9 @@ import { existsSync, readFileSync } from 'node:fs';
 import { posix, resolve } from 'node:path';
 import MarkdownIt from 'markdown-it';
 import { parse, postprocess, preprocess } from 'micromark';
-import { anchorFor, encodeHrefComponent, explicitAnchor, href, symbolAnchor, wikiPath, type PageExtension } from './markdown.js';
-import { normalizeTagLabels, type AuthoredPage, type C4Mark, type Diagnostic, type Documentation, type MarkdownContent } from './model.js';
+import { anchorFor, encodeHrefComponent, explicitAnchor, href, pageFile, symbolAnchor, wikiPath, type PageExtension } from './markdown.js';
+import { placeDocumentation } from './navigation.js';
+import { normalizeTagLabels, placementError, type AuthoredPage, type C4Mark, type Diagnostic, type Documentation, type MarkdownContent } from './model.js';
 import { projectPath, type Project } from './project.js';
 
 const markdown = {
@@ -54,6 +55,8 @@ function encodePath(path: string): string {
 function readPageAnnotations(text: string): MarkdownContent {
   const lines = text.split('\n');
   const tags: string[] = [];
+  const placement: { category?: string; path?: string } = {};
+  const annotationErrors: { message: string; line: number }[] = [];
   let zone: string | undefined;
   const c4Marks: C4Mark[] = [];
   let annotated = false;
@@ -61,15 +64,25 @@ function readPageAnnotations(text: string): MarkdownContent {
   for (; firstLine < lines.length; firstLine++) {
     const line = lines[firstLine].trim();
     if (!line) continue;
-    const annotation = /^<!--\s*@(?:realdocs|livedocs):(tag|zone|c4)(?:[ \t]+(.*?))?\s*-->$/.exec(line);
+    const annotation = /^<!--\s*@(?:realdocs|livedocs):(tag|zone|category|path|c4)(?:[ \t]+(.*?))?\s*-->$/.exec(line);
     if (!annotation) break;
     annotated = true;
-    if (annotation[1] === 'tag') tags.push(annotation[2] ?? '');
-    else if (annotation[1] === 'c4') c4Marks.push({ path: annotation[2]?.trim() ?? '', line: firstLine + 1, column: lines[firstLine].indexOf('<!--') + 1 });
-    else zone ??= annotation[2]?.trim() || undefined;
+    const [, name, value = ''] = annotation;
+    if (name === 'tag') tags.push(value);
+    else if (name === 'zone') zone ??= value.trim() || undefined;
+    else if (name === 'c4') c4Marks.push({ path: value.trim(), line: firstLine + 1, column: lines[firstLine].indexOf('<!--') + 1 });
+    else {
+      const key = name as 'category' | 'path';
+      const error = placementError(key, value, placement[key] !== undefined);
+      if (error) annotationErrors.push({ message: error, line: firstLine + 1 });
+      else placement[key] = value.trim();
+    }
   }
   if (!annotated) return { markdown: text };
-  return { markdown: lines.slice(firstLine).join('\n'), sourceLine: firstLine + 1, tagLabels: normalizeTagLabels(tags), zone, ...c4Marks.length ? { c4Marks } : {} };
+  return {
+    markdown: lines.slice(firstLine).join('\n'), sourceLine: firstLine + 1, tagLabels: normalizeTagLabels(tags), zone,
+    ...placement, ...(annotationErrors.length && { annotationErrors }), ...(c4Marks.length && { c4Marks }),
+  };
 }
 
 function headingsIn(content: MarkdownContent, extension: PageExtension, taken = new Set<string>()) {
@@ -205,7 +218,7 @@ function rebaseLinks<T extends MarkdownContent>(
 }
 
 export function includePages(documentation: Documentation, project: Project, extension: PageExtension): Documentation {
-  const diagnostics = [...documentation.diagnostics];
+  let diagnostics = [...documentation.diagnostics];
   const registry = new Map<string, Destination>();
   const modules = documentation.modules.map(module => {
     const symbols = new Map<string, string>();
@@ -219,7 +232,7 @@ export function includePages(documentation: Documentation, project: Project, ext
     const declared = module.symbols.filter(symbol => symbol.location.file === module.name)
       .map(symbol => ({ line: symbol.location.line, id: symbolAnchor(symbol) }));
     registry.set(module.name, {
-      output: wikiPath(module.name, 'modules', extension),
+      output: '', // Set once every input is placed.
       headings: new Set([...overview?.headings.map(heading => heading.id) ?? [], ...explicitAnchors(overview?.markdown ?? '')]),
       symbols,
       lines: lineTargets(overview, declared),
@@ -245,13 +258,23 @@ export function includePages(documentation: Documentation, project: Project, ext
       continue;
     }
     const page = headingsIn(readPageAnnotations(text), extension);
+    for (const { message, line } of page.annotationErrors ?? []) {
+      diagnostics.push({ level: 'error', message, location: { file: name, line, column: 1 } });
+    }
     outputPaths.add(output);
     registry.set(name, {
-      output,
+      output: '',
       headings: new Set([...page.headings.map(heading => heading.id), ...explicitAnchors(page.markdown)]),
       lines: lineTargets(page),
     });
     pages.push({ ...page, name, title: page.title || posix.basename(name) });
+  }
+
+  const placed = placeDocumentation({ ...documentation, diagnostics, modules, pages }, extension);
+  diagnostics = [...placed.diagnostics];
+  const moduleNames = new Set(modules.map(module => module.name));
+  for (const [name, destination] of registry) {
+    destination.output = pageFile(placed, name, moduleNames.has(name) ? 'modules' : 'pages', extension);
   }
 
   const { release } = documentation;
@@ -265,7 +288,7 @@ export function includePages(documentation: Documentation, project: Project, ext
     },
   };
   return {
-    ...documentation,
+    ...placed,
     diagnostics,
     modules: modules.map(module => ({
       ...module,
