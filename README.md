@@ -120,7 +120,7 @@ Put Mermaid `C4Context` and `C4Container` diagrams in a guide linked from the ho
 
 ### Interactive C4 page
 
-Add `--c4` to an HTML `build` or `watch` to write `c4.html` beside the wiki home and link it as **Architecture**. The page presents your `C4Context`, `C4Container`, and `C4Component` diagrams as one model. Double-click an element with a **+** badge to zoom into its level, or a **↗** badge to jump to a peer's level. Select any element to open a panel with Overview, Diagrams, Docs, and Code tabs. `--c4` fails with Markdown output and when no C4 diagram is found. Run `npx realdocs check --strict --c4` in CI to validate the model without building.
+Add `--c4` to an HTML `build` or `watch` to write `c4.html` beside the wiki home and link it as **Architecture**. The page presents your `C4Context`, `C4Container`, and `C4Component` diagrams as one model. Double-click an element with a **+** badge to zoom into its level, or a **↗** badge to jump to a peer's level. Select any element to open a panel with Overview, Diagrams, Docs, and Code tabs. `--c4` fails with Markdown output and when no C4 diagram is found. Run `npx realdocs check --strict --c4` in CI to validate the model without building. It also reports when no C4 diagram is found.
 
 Give each element a descriptive camelCase alias and reuse it in every view, because the same alias is the same element everywhere. A `System_Boundary(alias)` or `Container_Boundary(alias)` whose alias matches an element is that element's zoom level, so `Container_Boundary(runtime, …)` in a component view holds the components of the `runtime` container. A boundary that matches no element only groups. An element's path joins its parents' aliases, such as `fulfillment.runtime.coordinator`.
 

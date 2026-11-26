@@ -36,14 +36,13 @@ To explore the wider graph, start with [First shipment](docs/quickstart.md) and 
 ## Generate HTML
 
 ```sh
-(cd examples/fulfillment && node ../../dist/cli.js build --strict --graph --format html --out dist/wiki-html)
-(cd examples/fulfillment && node ../../dist/cli.js build --strict --c4 --format html --out dist/wiki-html)
+(cd examples/fulfillment && node ../../dist/cli.js build --strict --graph --c4 --format html --out dist/wiki-html)
 (cd examples && node ../dist/cli.js build --strict --graph --format html --out dist/wiki-html)
 ```
 
 Open `examples/fulfillment/dist/wiki-html/index.html` for the standalone wiki or `examples/dist/wiki-html/index.html` for the combined wiki. The [shipment page](src/fulfillment.ts#shipment-workflow) renders the flowchart using the bundled Mermaid script.
 
-The `--c4` build adds `c4.html`, an interactive architecture page. Open `examples/fulfillment/dist/wiki-html/c4.html`, zoom from the system into the Order application process, and select the **Shipment coordinator** to see its marked guide, diagram, and code. The markers are in the [architecture guide](docs/architecture.md#preparing-a-shipment), the [checkout sequence](docs/integrations.md#checkout-to-handoff), and [`prepareShipment`](src/fulfillment.ts).
+The `--c4` option adds `c4.html`, an interactive architecture page. Open `examples/fulfillment/dist/wiki-html/c4.html` and zoom from the system into the Order application process. Each marked item appears on the element whose path it names: select **Fulfillment application** for the [architecture guide section](docs/architecture.md#preparing-a-shipment), **Order application process** for the [checkout sequence](docs/integrations.md#checkout-to-handoff), and **Shipment coordinator** for the code of [`prepareShipment`](src/fulfillment.ts).
 
 ## Try a live edit
 
