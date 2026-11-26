@@ -78,6 +78,7 @@ export interface Documentation {
   fileGraph?: FileGraph;
   release?: Release;
   navigation?: { title: string; pages: string[]; sections: DocumentationSection[] };
+  c4?: C4Model;
 }
 
 export type FileRelation = 'import' | 're-export' | 'type-only' | 'doc-link' | 'declared';
@@ -121,3 +122,20 @@ export interface C4View {
   marks: C4Mark[];
   misplacedMarks: C4Mark[];
 }
+
+export interface C4PlacedView { title: string; type: C4View['type']; origin: string; href: string; source: string; relationships: C4Relationship[] }
+export interface C4Level { key: string; path: string; label: string; type: C4View['type']; views: C4PlacedView[]; merged?: string }
+export interface C4ModelElement {
+  alias: string; path: string; kind: string; label: string; technology?: string; description?: string;
+  home: string; hasLevel: boolean; appearsIn: { title: string; origin: string }[];
+}
+export type C4Tab = 'diagrams' | 'docs' | 'code';
+export interface C4Item {
+  path: string; tab: C4Tab; kind: 'page' | 'section' | 'diagram' | 'file' | 'symbol';
+  title: string; source: string; href: string;
+  markdown?: string; mermaid?: string;
+  signature?: string; summary?: string;
+  exports?: { name: string; href: string }[];
+  origin: string;
+}
+export interface C4Model { publish: boolean; root: string; levels: C4Level[]; elements: C4ModelElement[]; items: C4Item[] }
