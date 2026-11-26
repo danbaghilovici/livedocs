@@ -41,6 +41,9 @@ export interface MarkdownContent {
   tagLabels?: string[];
   zone?: string;
   linkedFiles?: string[];
+  category?: string;
+  path?: string;
+  annotationErrors?: { message: string; line: number }[];
 }
 
 export interface AuthoredPage extends MarkdownContent {
@@ -60,6 +63,61 @@ export interface DocumentationSection {
   title: string;
   entries: string[];
   pages: string[];
+  category?: string;
+  group?: string;
+}
+
+/** A folder default from realdocs.json. The pattern is a normalized glob relative to the site root. */
+export interface PlacementRule {
+  pattern: string;
+  category: string;
+  group?: string;
+}
+
+export interface Navigation {
+  title: string;
+  pages: string[];
+  sections: DocumentationSection[];
+  home?: string;
+  categories: string[];
+  groups: Record<string, string>;
+  rules: PlacementRule[];
+  sourceUrl?: string;
+}
+
+/** Where an input is written, and the label of the category that placed it. */
+export interface Route {
+  file: string;
+  category?: string;
+}
+
+export interface NavPage {
+  kind: 'page';
+  label: string;
+  file: string;
+  source: string;
+  code: boolean;
+}
+
+export interface NavGroup {
+  kind: 'group';
+  label: string;
+  key: string;
+  file: string;
+  /** Source name of the authored page that is this group's index. */
+  index?: string;
+  /** Section ID when the group is a section landing page. */
+  section?: string;
+  children: NavItem[];
+}
+
+export type NavItem = NavGroup | NavPage;
+
+export interface SiteMap {
+  home: string;
+  homeSource?: string;
+  routes: Record<string, Route>;
+  tree: NavGroup[];
 }
 
 export interface Release {
@@ -77,7 +135,8 @@ export interface Documentation {
   diagnostics: Diagnostic[];
   fileGraph?: FileGraph;
   release?: Release;
-  navigation?: { title: string; pages: string[]; sections: DocumentationSection[] };
+  navigation?: Navigation;
+  site?: SiteMap;
 }
 
 export type FileRelation = 'import' | 're-export' | 'type-only' | 'doc-link' | 'declared';

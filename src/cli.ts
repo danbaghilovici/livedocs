@@ -217,8 +217,8 @@ async function main(): Promise<void> {
   const compilations = projects.map(project => ({ project, program: createProgram(project) }));
   code = extractDocumentations(compilations, options.graph);
   if (site) {
-    const { title, pages, sections } = site;
-    code.navigation = { title, pages, sections };
+    const { title, pages, sections, home, categories, groups, rules, sourceUrl } = site;
+    code.navigation = { title, pages, sections, home, categories, groups, rules, sourceUrl };
   }
   const compilerConfigs = impact || release ? compilations.flatMap(({ project, program }) => {
     const compilerConfig = program.getCompilerOptions().configFile as ts.TsConfigSourceFile | undefined;

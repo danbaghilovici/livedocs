@@ -1,34 +1,12 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { existsSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
-import { fileURLToPath } from 'node:url';
 
-const cli = fileURLToPath(new URL('../dist/cli.js', import.meta.url));
-
-function fixture(t, files) {
-  const cwd = mkdtempSync(join(tmpdir(), 'realdocs-test-'));
-  t.after(() => rmSync(cwd, { recursive: true, force: true }));
-  const write = (file, contents) => {
-    mkdirSync(dirname(join(cwd, file)), { recursive: true });
-    writeFileSync(join(cwd, file), contents);
-  };
-  write('package.json', '{"type":"module"}');
-  for (const [file, contents] of Object.entries(files)) write(file, contents);
-
-  return {
-    cwd,
-    write,
-    read: file => readFileSync(join(cwd, file), 'utf8'),
-    run: (...args) => execFileSync(process.execPath, [cli, ...args], { cwd, encoding: 'utf8', stdio: 'pipe' }),
-    result: (...args) => spawnSync(process.execPath, [cli, ...args], { cwd, encoding: 'utf8' }),
-    withPreload: (...args) => spawnSync(process.execPath, ['--require', './preload.cjs', cli, ...args], { cwd, encoding: 'utf8' }),
-  };
-}
+import { cli, fixture } from './fixture.mjs';
 
 test('install-skill adds both skills and preserves an existing local edit', t => {
   const project = fixture(t, {});
